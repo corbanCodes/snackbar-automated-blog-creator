@@ -95,7 +95,7 @@ app.get('/api/models', requireAuth, (req, res) => {
 // Generate blogs
 app.post('/api/generate', requireAuth, async (req, res) => {
   console.log('Generate endpoint hit');
-  console.log('Request body:', JSON.stringify(req.body, null, 2));
+  console.log('Request params:', { model: req.body.model, count: req.body.count, hasApiKey: !!req.body.apiKey });
 
   try {
     const { apiKey, model, count, topics } = req.body;
@@ -135,28 +135,45 @@ Content requirements:
 - No markdown, only HTML
 - Do not include the title in the content (it's separate)
 
-Return as JSON array:
-[
-  {
-    "title": "...",
-    "slug": "...",
-    "blurb": "...",
-    "content": "<h2>...</h2><p>...</p>..."
-  }
-]
-
-Return ONLY the JSON array, no other text.`;
+Return as a JSON object with a "blogs" array:
+{
+  "blogs": [
+    {
+      "title": "...",
+      "slug": "...",
+      "blurb": "...",
+      "content": "<h2>...</h2><p>...</p>..."
+    }
+  ]
+}`;
 
       console.log(`Calling OpenAI API for batch ${i + 1}/${batches}...`);
+
+      const systemPrompt = `You are a professional content writer for Snackbar Design (snackbar.design), a specialized UI/UX design agency focused on mobile app growth.
+
+About Snackbar Design:
+- Snackbar helps mobile app companies scale their creative production for app stores, in-app experiences, and marketing
+- They specialize in ASO creative optimization, app store screenshots, preview videos, paywall design, and onboarding UX
+- Notable clients include Adobe, Meta, eharmony, and Recorded Future
+- They focus on high-volume creative production and multi-market localization
+
+Writing style:
+- Expert, practical, and performance-driven tone
+- Write for VP Growth, ASO Managers, and Product leaders at growth-stage mobile app companies
+- Include actionable insights and real-world examples
+- Naturally reference Snackbar's expertise where relevant (not in every paragraph, but organically)
+
+CRITICAL: You must return ONLY valid JSON. No markdown, no code blocks, no explanations. Just the raw JSON array.`;
 
       const completion = await openai.chat.completions.create({
         model: model,
         messages: [
-          { role: 'system', content: 'You are a professional content writer for a UI/UX design agency. Generate high-quality, SEO-optimized blog content. Always return valid JSON.' },
+          { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt }
         ],
         temperature: 0.7,
-        max_tokens: 8000
+        max_tokens: 8000,
+        response_format: { type: "json_object" }
       });
 
       console.log('OpenAI response received');
@@ -165,22 +182,27 @@ Return ONLY the JSON array, no other text.`;
       // Parse JSON from response
       let parsedBlogs;
       try {
-        // Try to extract JSON if wrapped in code blocks
-        const jsonMatch = responseText.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-          parsedBlogs = JSON.parse(jsonMatch[0]);
-        } else {
-          parsedBlogs = JSON.parse(responseText);
+        const parsed = JSON.parse(responseText);
+        parsedBlogs = parsed.blogs || parsed;
+        if (!Array.isArray(parsedBlogs)) {
+          parsedBlogs = [parsedBlogs];
         }
       } catch (parseError) {
-        console.error('Parse error:', parseError);
-        console.error('Response:', responseText);
+        console.error('Parse error:', parseError.message);
+        console.error('Response preview:', responseText.substring(0, 500));
         continue;
       }
 
       blogs.push(...parsedBlogs);
       console.log(`Batch complete: ${blogs.length}/${blogCount} blogs generated`);
     }
+
+    // Check if we got any blogs
+    if (blogs.length === 0) {
+      throw new Error('Failed to generate any blog posts. Please try again.');
+    }
+
+    console.log(`Generation complete: ${blogs.length} blogs total`);
 
     // Generate CSV
     const today = new Date();
