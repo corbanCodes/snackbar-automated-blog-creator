@@ -12,7 +12,11 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'password';
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'public')));
+
+// Serve static files EXCEPT index.html (protected)
+app.use(express.static(path.join(__dirname, 'public'), {
+  index: false
+}));
 
 app.use(session({
   secret: process.env.SESSION_SECRET || 'snackbar-blog-secret-key',
