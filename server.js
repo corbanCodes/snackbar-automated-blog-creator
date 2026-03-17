@@ -2,6 +2,8 @@ const express = require('express');
 const session = require('express-session');
 const OpenAI = require('openai');
 const path = require('path');
+const fs = require('fs');
+const https = require('https');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -92,9 +94,34 @@ app.get('/api/models', requireAuth, (req, res) => {
   res.json(MODEL_PRICING);
 });
 
+// Helper to download image from URL
+function downloadImage(url, filepath) {
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(filepath);
+    https.get(url, (response) => {
+      response.pipe(file);
+      file.on('finish', () => {
+        file.close();
+        resolve(filepath);
+      });
+    }).on('error', (err) => {
+      fs.unlink(filepath, () => {});
+      reject(err);
+    });
+  });
+}
+
+// Ensure images directory exists
+const imagesDir = path.join(__dirname, 'public', 'generated-images');
+if (!fs.existsSync(imagesDir)) {
+  fs.mkdirSync(imagesDir, { recursive: true });
+}
+
 // Generate blogs with Server-Sent Events for real-time progress
 app.get('/api/generate-stream', requireAuth, async (req, res) => {
-  const { apiKey, model, count, topics } = req.query;
+  const { apiKey, model, count, callsPerArticle, generateImages, imageModel, topics } = req.query;
+  const shouldGenerateImages = generateImages === 'true';
+  const selectedImageModel = imageModel || 'dall-e-3';
 
   // Set SSE headers
   res.setHeader('Content-Type', 'text/event-stream');
@@ -112,12 +139,22 @@ app.get('/api/generate-stream', requireAuth, async (req, res) => {
     }
 
     const blogCount = Math.min(Math.max(parseInt(count), 1), 30);
-    console.log('Starting blog generation:', { model, count: blogCount });
+    const depth = Math.min(Math.max(parseInt(callsPerArticle) || 2, 1), 5);
+    console.log('=== GENERATION START ===');
+    console.log('Config:', {
+      model,
+      blogCount,
+      depth,
+      shouldGenerateImages,
+      selectedImageModel,
+      hasTopics: !!topics
+    });
 
     const openai = new OpenAI({ apiKey });
     const blogs = [];
-    const batchSize = 2;
-    const batches = Math.ceil(blogCount / batchSize);
+
+    const totalSteps = blogCount * depth;
+    let currentStep = 0;
 
     sendEvent('progress', { message: 'Starting generation...', current: 0, total: blogCount });
 
@@ -137,81 +174,196 @@ Writing style:
 
 CRITICAL: You must return ONLY valid JSON. No markdown, no code blocks, no explanations.`;
 
-    for (let i = 0; i < batches; i++) {
-      const currentBatchSize = Math.min(batchSize, blogCount - blogs.length);
-      const topicContext = topics ? `Focus on these topics: ${topics}` : 'Focus on UI/UX design, mobile app design, app store optimization, conversion optimization, and design systems.';
+    const topicContext = topics ? `Focus on these topics: ${topics}` : 'Focus on UI/UX design, mobile app design, app store optimization, conversion optimization, and design systems.';
 
-      const prompt = `Generate ${currentBatchSize} professional blog post(s) for Snackbar Design.
+    // Generate one blog at a time with multiple depth passes
+    for (let blogIndex = 0; blogIndex < blogCount; blogIndex++) {
+      sendEvent('progress', {
+        message: `Creating article ${blogIndex + 1} of ${blogCount}...`,
+        current: blogIndex,
+        total: blogCount
+      });
+
+      let blogData = null;
+
+      // First call: Generate the initial blog structure
+      const initialPrompt = `Generate 1 professional blog post for Snackbar Design.
 
 ${topicContext}
 
-For each blog post, provide:
+Pick a unique topic that hasn't been covered yet. Provide:
 1. title: A compelling, SEO-friendly title
 2. slug: URL-friendly slug (lowercase, hyphens, no special characters)
 3. blurb: A 1-2 sentence preview/description (max 160 characters)
-4. content: Full blog post in HTML format (1000-1500 words)
+4. content: Blog post in HTML format (800-1200 words for this first pass)
 
 Content requirements:
 - Use proper HTML tags: <h2>, <h3>, <p>, <ul>, <li>, <strong>, <em>
-- Include 3-5 subheadings (h2/h3)
+- Include 3-4 subheadings (h2/h3)
 - Professional tone, actionable insights
 - No markdown, only HTML
 - Do not include the title in the content (it's separate)
 
-Return as a JSON object with a "blogs" array:
+Return as JSON:
 {
-  "blogs": [
-    {
-      "title": "...",
-      "slug": "...",
-      "blurb": "...",
-      "content": "<h2>...</h2><p>...</p>..."
-    }
-  ]
+  "title": "...",
+  "slug": "...",
+  "blurb": "...",
+  "content": "<h2>...</h2><p>...</p>..."
 }`;
 
-      sendEvent('progress', {
-        message: `Generating batch ${i + 1} of ${batches}...`,
-        current: blogs.length,
-        total: blogCount,
-        batch: i + 1,
-        totalBatches: batches
-      });
+      console.log(`Article ${blogIndex + 1}: Initial generation...`);
 
-      console.log(`Calling OpenAI API for batch ${i + 1}/${batches}...`);
-
-      const completion = await openai.chat.completions.create({
-        model: model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.7,
-        max_tokens: 8000,
-        response_format: { type: "json_object" }
-      });
-
-      console.log('OpenAI response received');
-      const responseText = completion.choices[0].message.content.trim();
-
-      let parsedBlogs;
       try {
-        const parsed = JSON.parse(responseText);
-        parsedBlogs = parsed.blogs || parsed;
-        if (!Array.isArray(parsedBlogs)) {
-          parsedBlogs = [parsedBlogs];
+        const initialCompletion = await openai.chat.completions.create({
+          model: model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: initialPrompt }
+          ],
+          temperature: 0.7,
+          max_tokens: 4000,
+          response_format: { type: "json_object" }
+        });
+
+        blogData = JSON.parse(initialCompletion.choices[0].message.content.trim());
+        currentStep++;
+      } catch (err) {
+        console.error(`=== ARTICLE ${blogIndex + 1} INITIAL ERROR ===`);
+        console.error('Error:', err.message);
+        console.error('Stack:', err.stack);
+        if (err.response) {
+          console.error('API Response:', JSON.stringify(err.response.data || err.response, null, 2));
         }
-      } catch (parseError) {
-        console.error('Parse error:', parseError.message);
         sendEvent('progress', {
-          message: `Batch ${i + 1} had parsing issues, continuing...`,
-          current: blogs.length,
+          message: `Article ${blogIndex + 1} failed, skipping...`,
+          current: blogIndex,
           total: blogCount
         });
         continue;
       }
 
-      blogs.push(...parsedBlogs);
+      // Additional passes to expand content
+      for (let pass = 1; pass < depth; pass++) {
+        sendEvent('progress', {
+          message: `Expanding article ${blogIndex + 1} (pass ${pass + 1}/${depth})...`,
+          current: blogIndex,
+          total: blogCount
+        });
+
+        const expandPrompt = `Here is an existing blog post. Add 2-3 new sections to make it more comprehensive. Maintain the same style and flow.
+
+EXISTING CONTENT:
+Title: ${blogData.title}
+${blogData.content}
+
+Add new sections that:
+- Dive deeper into practical implementation
+- Include specific examples, case studies, or data points
+- Add actionable tips or frameworks
+- Reference Snackbar's expertise naturally where relevant
+
+Return ONLY the complete updated content (including original + new sections) as JSON:
+{
+  "content": "<h2>...</h2><p>... full combined content with new sections ...</p>"
+}`;
+
+        console.log(`Article ${blogIndex + 1}: Expansion pass ${pass + 1}/${depth}...`);
+
+        try {
+          const expandCompletion = await openai.chat.completions.create({
+            model: model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: expandPrompt }
+            ],
+            temperature: 0.7,
+            max_tokens: 6000,
+            response_format: { type: "json_object" }
+          });
+
+          const expanded = JSON.parse(expandCompletion.choices[0].message.content.trim());
+          if (expanded.content) {
+            blogData.content = expanded.content;
+          }
+          currentStep++;
+        } catch (err) {
+          console.error(`=== ARTICLE ${blogIndex + 1} EXPANSION ${pass + 1} ERROR ===`);
+          console.error('Error:', err.message);
+          console.error('Stack:', err.stack);
+          if (err.response) {
+            console.error('API Response:', JSON.stringify(err.response.data || err.response, null, 2));
+          }
+        }
+      }
+
+      // Generate hero image if enabled
+      if (shouldGenerateImages && blogData) {
+        sendEvent('progress', {
+          message: `Creating image for article ${blogIndex + 1}...`,
+          current: blogIndex,
+          total: blogCount
+        });
+
+        try {
+          const imagePrompt = `Modern, minimalist abstract illustration representing "${blogData.title}". Clean geometric shapes, subtle gradients, professional design aesthetic. No text, no logos, no words, no letters. Soft teal and neutral color palette. Suitable as a blog hero image.`;
+
+          console.log(`Article ${blogIndex + 1}: Generating image with ${selectedImageModel}...`);
+
+          // Configure based on model
+          let imageParams = {
+            prompt: imagePrompt,
+            n: 1
+          };
+
+          if (selectedImageModel === 'dall-e-3' || selectedImageModel === 'dall-e-3-hd') {
+            imageParams.model = 'dall-e-3';
+            imageParams.size = '1792x1024';
+            imageParams.quality = selectedImageModel === 'dall-e-3-hd' ? 'hd' : 'standard';
+          } else if (selectedImageModel === 'dall-e-2') {
+            imageParams.model = 'dall-e-2';
+            imageParams.size = '1024x1024'; // DALL-E 2 max size
+          } else if (selectedImageModel === 'gpt-image-1') {
+            imageParams.model = 'gpt-image-1';
+            imageParams.size = '1536x1024';
+            imageParams.quality = 'medium';
+          }
+
+          const imageResponse = await openai.images.generate(imageParams);
+
+          const imageUrl = imageResponse.data[0].url;
+          const imageName = `${blogData.slug}-${Date.now()}.png`;
+          const imagePath = path.join(imagesDir, imageName);
+
+          await downloadImage(imageUrl, imagePath);
+
+          // Get the host from request headers for the URL
+          const host = req.get('host');
+          const protocol = req.get('x-forwarded-proto') || 'https';
+          blogData.image = `${protocol}://${host}/generated-images/${imageName}`;
+
+          console.log(`Article ${blogIndex + 1}: Image saved to ${imageName}`);
+        } catch (imgErr) {
+          console.error(`=== ARTICLE ${blogIndex + 1} IMAGE ERROR ===`);
+          console.error('Model:', selectedImageModel);
+          console.error('Error:', imgErr.message);
+          console.error('Stack:', imgErr.stack);
+          if (imgErr.response) {
+            console.error('API Response:', JSON.stringify(imgErr.response.data || imgErr.response, null, 2));
+          }
+          blogData.image = '';
+          sendEvent('progress', {
+            message: `Image generation failed for article ${blogIndex + 1}, continuing...`,
+            current: blogIndex,
+            total: blogCount
+          });
+        }
+      } else {
+        blogData.image = '';
+      }
+
+      blogs.push(blogData);
+      console.log(`Article ${blogIndex + 1} complete (${depth} passes)`);
       console.log(`Batch complete: ${blogs.length}/${blogCount} blogs generated`);
 
       sendEvent('progress', {
@@ -226,23 +378,28 @@ Return as a JSON object with a "blogs" array:
       return res.end();
     }
 
-    console.log(`Generation complete: ${blogs.length} blogs total`);
+    console.log('=== GENERATION COMPLETE ===');
+    console.log(`Total blogs: ${blogs.length}`);
+    console.log('Blog titles:', blogs.map(b => b.title));
+    console.log('Images generated:', blogs.filter(b => b.image).length);
 
     // Generate CSV
     const today = new Date();
     const dateStr = `${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}/${today.getFullYear()}`;
 
-    const csvRows = [['title', 'slug', 'date', 'blurb', 'content'].join(',')];
+    const csvRows = [['title', 'slug', 'date', 'image', 'blurb', 'content'].join(',')];
 
     for (const blog of blogs) {
       const escapedContent = `"${blog.content.replace(/"/g, '""')}"`;
       const escapedBlurb = `"${blog.blurb.replace(/"/g, '""')}"`;
       const escapedTitle = `"${blog.title.replace(/"/g, '""')}"`;
+      const imageUrl = blog.image || '';
 
       csvRows.push([
         escapedTitle,
         blog.slug,
         dateStr,
+        imageUrl,
         escapedBlurb,
         escapedContent
       ].join(','));
@@ -260,7 +417,12 @@ Return as a JSON object with a "blogs" array:
     res.end();
 
   } catch (error) {
-    console.error('Generation error:', error.message);
+    console.error('=== FATAL GENERATION ERROR ===');
+    console.error('Error:', error.message);
+    console.error('Stack:', error.stack);
+    if (error.response) {
+      console.error('API Response:', JSON.stringify(error.response.data || error.response, null, 2));
+    }
     sendEvent('error', { error: error.message || 'Failed to generate blogs' });
     res.end();
   }

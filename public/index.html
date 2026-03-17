@@ -252,7 +252,28 @@
           <div class="mb-3">
             <label for="blogCount" class="form-label">Number of Blog Posts</label>
             <input type="number" class="form-control" id="blogCount" value="10" min="1" max="30">
-            <div class="form-text">Generate 1-30 blog posts. 2 posts per API call.</div>
+            <div class="form-text">Generate 1-30 blog posts.</div>
+          </div>
+          <div class="mb-3">
+            <label for="callsPerArticle" class="form-label">Depth (API calls per article)</label>
+            <input type="number" class="form-control" id="callsPerArticle" value="2" min="1" max="5">
+            <div class="form-text">More calls = longer, more detailed articles. Recommended: 2-3 for standard, 4-5 for in-depth.</div>
+          </div>
+          <div class="mb-3">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="generateImages">
+              <label class="form-check-label" for="generateImages">Generate hero images</label>
+            </div>
+            <div class="form-text">Creates modern, abstract hero images for each article.</div>
+          </div>
+          <div class="mb-3" id="imageModelContainer" style="display: none;">
+            <label for="imageModel" class="form-label">Image Model</label>
+            <select class="form-select" id="imageModel">
+              <option value="dall-e-3" selected>DALL-E 3 - Best quality ($0.04/image)</option>
+              <option value="dall-e-3-hd">DALL-E 3 HD - Highest quality ($0.08/image)</option>
+              <option value="gpt-image-1">GPT Image - Newest model ($0.04/image)</option>
+              <option value="dall-e-2">DALL-E 2 - Budget option ($0.02/image)</option>
+            </select>
           </div>
           <div class="mb-3">
             <label for="topics" class="form-label">Topics (optional)</label>
@@ -322,19 +343,39 @@
     });
 
     // Cost estimate
+    const IMAGE_COSTS = {
+      'dall-e-3': 0.04,
+      'dall-e-3-hd': 0.08,
+      'gpt-image-1': 0.04,
+      'dall-e-2': 0.02
+    };
+
     function updateCostEstimate() {
       const model = document.querySelector('input[name="model"]:checked').value;
       const count = parseInt(document.getElementById('blogCount').value) || 10;
+      const callsPerArticle = parseInt(document.getElementById('callsPerArticle').value) || 2;
+      const generateImages = document.getElementById('generateImages').checked;
+      const imageModel = document.getElementById('imageModel').value;
       const costs = MODEL_COSTS[model];
 
-      const inputCost = (TOKENS_PER_BLOG.input * count / 1000000) * costs.input;
-      const outputCost = (TOKENS_PER_BLOG.output * count / 1000000) * costs.output;
-      const totalCost = inputCost + outputCost;
+      const totalCalls = count * callsPerArticle;
+      const inputCost = (TOKENS_PER_BLOG.input * totalCalls / 1000000) * costs.input;
+      const outputCost = (TOKENS_PER_BLOG.output * totalCalls / 1000000) * costs.output;
+      const imageCost = generateImages ? count * IMAGE_COSTS[imageModel] : 0;
+      const totalCost = inputCost + outputCost + imageCost;
 
       document.getElementById('costEstimate').textContent = `~$${totalCost.toFixed(2)}`;
     }
 
+    // Show/hide image model selector
+    document.getElementById('generateImages').addEventListener('change', (e) => {
+      document.getElementById('imageModelContainer').style.display = e.target.checked ? 'block' : 'none';
+      updateCostEstimate();
+    });
+
     document.getElementById('blogCount').addEventListener('input', updateCostEstimate);
+    document.getElementById('callsPerArticle').addEventListener('input', updateCostEstimate);
+    document.getElementById('imageModel').addEventListener('change', updateCostEstimate);
     updateCostEstimate();
 
     // Logout
@@ -349,6 +390,9 @@
       const apiKey = document.getElementById('apiKey').value.trim();
       const model = document.querySelector('input[name="model"]:checked').value;
       const count = parseInt(document.getElementById('blogCount').value) || 10;
+      const callsPerArticle = parseInt(document.getElementById('callsPerArticle').value) || 2;
+      const generateImages = document.getElementById('generateImages').checked;
+      const imageModel = document.getElementById('imageModel').value;
       const topics = document.getElementById('topics').value.trim();
       const errorAlert = document.getElementById('errorAlert');
       const generateBtn = document.getElementById('generateBtn');
@@ -372,6 +416,9 @@
         apiKey,
         model,
         count: count.toString(),
+        callsPerArticle: callsPerArticle.toString(),
+        generateImages: generateImages.toString(),
+        imageModel,
         topics
       });
 
