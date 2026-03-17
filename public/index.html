@@ -374,12 +374,17 @@
       }, 500);
 
       try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 min timeout
+
         const res = await fetch('/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ apiKey, model, count, topics })
+          body: JSON.stringify({ apiKey, model, count, topics }),
+          signal: controller.signal
         });
 
+        clearTimeout(timeoutId);
         clearInterval(progressInterval);
 
         if (!res.ok) {
@@ -410,7 +415,15 @@
         clearInterval(progressInterval);
         document.getElementById('progressSection').classList.remove('active');
         document.getElementById('formSection').style.display = 'block';
-        errorAlert.textContent = error.message;
+
+        let errorMsg = error.message;
+        if (error.name === 'AbortError') {
+          errorMsg = 'Request timed out. Try generating fewer posts.';
+        } else if (error.message === 'Failed to fetch') {
+          errorMsg = 'Network error. Check your API key and try again.';
+        }
+
+        errorAlert.textContent = errorMsg;
         errorAlert.classList.remove('d-none');
       }
     });

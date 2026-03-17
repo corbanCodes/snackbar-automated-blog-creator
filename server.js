@@ -95,6 +95,7 @@ app.post('/api/generate', requireAuth, async (req, res) => {
   const blogCount = Math.min(Math.max(parseInt(count), 1), 30);
 
   try {
+    console.log('Starting blog generation:', { model, count: blogCount });
     const openai = new OpenAI({ apiKey });
 
     const blogs = [];
@@ -164,6 +165,7 @@ Return ONLY the JSON array, no other text.`;
       }
 
       blogs.push(...parsedBlogs);
+      console.log(`Batch complete: ${blogs.length}/${blogCount} blogs generated`);
     }
 
     // Generate CSV
@@ -198,7 +200,8 @@ Return ONLY the JSON array, no other text.`;
     });
 
   } catch (error) {
-    console.error('Generation error:', error);
+    console.error('Generation error:', error.message);
+    console.error('Error details:', error.response?.data || error);
     res.status(500).json({
       error: error.message || 'Failed to generate blogs',
       details: error.response?.data || null
