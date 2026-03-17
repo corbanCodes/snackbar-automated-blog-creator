@@ -345,12 +345,13 @@
     });
 
     // Generate
-    document.getElementById('generateBtn').addEventListener('click', async () => {
+    document.getElementById('generateBtn').addEventListener('click', () => {
       const apiKey = document.getElementById('apiKey').value.trim();
       const model = document.querySelector('input[name="model"]:checked').value;
       const count = parseInt(document.getElementById('blogCount').value) || 10;
       const topics = document.getElementById('topics').value.trim();
       const errorAlert = document.getElementById('errorAlert');
+      const generateBtn = document.getElementById('generateBtn');
 
       if (!apiKey) {
         errorAlert.textContent = 'Please enter your OpenAI API key.';
@@ -359,40 +360,34 @@
       }
 
       errorAlert.classList.add('d-none');
+      generateBtn.disabled = true;
       document.getElementById('formSection').style.display = 'none';
       document.getElementById('progressSection').classList.add('active');
 
       const progressBar = document.getElementById('progressBar');
       const progressText = document.getElementById('progressText');
 
-      // Simulate progress
-      let progress = 0;
-      const progressInterval = setInterval(() => {
-        progress += Math.random() * 10;
-        if (progress > 90) progress = 90;
-        progressBar.style.width = `${progress}%`;
-      }, 500);
+      // Build query string for SSE
+      const params = new URLSearchParams({
+        apiKey,
+        model,
+        count: count.toString(),
+        topics
+      });
 
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 min timeout
+      const eventSource = new EventSource(`/api/generate-stream?${params}`);
 
-        const res = await fetch('/api/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ apiKey, model, count, topics }),
-          signal: controller.signal
-        });
+      eventSource.addEventListener('progress', (e) => {
+        const data = JSON.parse(e.data);
+        const percent = data.total > 0 ? (data.current / data.total) * 100 : 0;
+        progressBar.style.width = `${Math.max(percent, 5)}%`;
+        progressText.textContent = data.message;
+      });
 
-        clearTimeout(timeoutId);
-        clearInterval(progressInterval);
-
-        if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.error || 'Generation failed');
-        }
-
-        const data = await res.json();
+      eventSource.addEventListener('complete', (e) => {
+        const data = JSON.parse(e.data);
+        eventSource.close();
+        generateBtn.disabled = false;
         generatedCSV = data.csv;
 
         progressBar.style.width = '100%';
@@ -410,22 +405,30 @@
             </div>
           `).join('');
         }, 500);
+      });
 
-      } catch (error) {
-        clearInterval(progressInterval);
+      eventSource.addEventListener('error', (e) => {
+        let errorMsg = 'Connection error. Please try again.';
+        try {
+          const data = JSON.parse(e.data);
+          errorMsg = data.error || errorMsg;
+        } catch {}
+        eventSource.close();
+        generateBtn.disabled = false;
         document.getElementById('progressSection').classList.remove('active');
         document.getElementById('formSection').style.display = 'block';
-
-        let errorMsg = error.message;
-        if (error.name === 'AbortError') {
-          errorMsg = 'Request timed out. Try generating fewer posts.';
-        } else if (error.message === 'Failed to fetch') {
-          errorMsg = 'Network error. Check your API key and try again.';
-        }
-
         errorAlert.textContent = errorMsg;
         errorAlert.classList.remove('d-none');
-      }
+      });
+
+      eventSource.onerror = () => {
+        eventSource.close();
+        generateBtn.disabled = false;
+        document.getElementById('progressSection').classList.remove('active');
+        document.getElementById('formSection').style.display = 'block';
+        errorAlert.textContent = 'Connection lost. Please try again.';
+        errorAlert.classList.remove('d-none');
+      };
     });
 
     // Download CSV
