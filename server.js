@@ -13,6 +13,12 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'password';
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Log all requests
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  next();
+});
+
 // Serve static files EXCEPT index.html (protected)
 app.use(express.static(path.join(__dirname, 'public'), {
   index: false
@@ -27,9 +33,11 @@ app.use(session({
 
 // Auth middleware
 function requireAuth(req, res, next) {
+  console.log('Auth check:', { authenticated: req.session?.authenticated, path: req.path });
   if (req.session.authenticated) {
     next();
   } else {
+    console.log('Auth rejected for:', req.path);
     res.status(401).json({ error: 'Unauthorized' });
   }
 }
@@ -86,15 +94,18 @@ app.get('/api/models', requireAuth, (req, res) => {
 
 // Generate blogs
 app.post('/api/generate', requireAuth, async (req, res) => {
-  const { apiKey, model, count, topics } = req.body;
-
-  if (!apiKey || !model || !count) {
-    return res.status(400).json({ error: 'Missing required fields' });
-  }
-
-  const blogCount = Math.min(Math.max(parseInt(count), 1), 30);
+  console.log('Generate endpoint hit');
+  console.log('Request body:', JSON.stringify(req.body, null, 2));
 
   try {
+    const { apiKey, model, count, topics } = req.body;
+
+    if (!apiKey || !model || !count) {
+      console.log('Missing fields:', { hasApiKey: !!apiKey, hasModel: !!model, hasCount: !!count });
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const blogCount = Math.min(Math.max(parseInt(count), 1), 30);
     console.log('Starting blog generation:', { model, count: blogCount });
     const openai = new OpenAI({ apiKey });
 
@@ -136,6 +147,8 @@ Return as JSON array:
 
 Return ONLY the JSON array, no other text.`;
 
+      console.log(`Calling OpenAI API for batch ${i + 1}/${batches}...`);
+
       const completion = await openai.chat.completions.create({
         model: model,
         messages: [
@@ -146,6 +159,7 @@ Return ONLY the JSON array, no other text.`;
         max_tokens: 8000
       });
 
+      console.log('OpenAI response received');
       const responseText = completion.choices[0].message.content.trim();
 
       // Parse JSON from response
