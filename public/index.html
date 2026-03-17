@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Snackbar Blog Creator</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --snackbar-teal: #35DCC8;
+      --snackbar-dark: #1a1a2e;
+    }
+    body {
+      background: #f8f9fa;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      min-height: 100vh;
+    }
+    .navbar {
+      background: white;
+      border-bottom: 1px solid #e9ecef;
+      padding: 16px 0;
+    }
+    .navbar svg {
+      width: 140px;
+      height: auto;
+    }
+    .main-container {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+    .card {
+      border: none;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+      margin-bottom: 24px;
+    }
+    .card-header {
+      background: white;
+      border-bottom: 1px solid #f0f0f0;
+      padding: 20px 24px;
+      font-weight: 600;
+      font-size: 16px;
+      border-radius: 12px 12px 0 0;
+    }
+    .card-body {
+      padding: 24px;
+    }
+    .form-label {
+      font-weight: 500;
+      color: #495057;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+    .form-control, .form-select {
+      border-radius: 8px;
+      padding: 12px 16px;
+      border: 1px solid #dee2e6;
+      font-size: 14px;
+    }
+    .form-control:focus, .form-select:focus {
+      border-color: var(--snackbar-teal);
+      box-shadow: 0 0 0 3px rgba(53, 220, 200, 0.15);
+    }
+    .btn-primary {
+      background: var(--snackbar-teal);
+      border: none;
+      border-radius: 8px;
+      padding: 14px 28px;
+      font-weight: 500;
+      font-size: 15px;
+    }
+    .btn-primary:hover {
+      background: #2bc4b2;
+    }
+    .btn-primary:disabled {
+      background: #adb5bd;
+    }
+    .btn-outline-secondary {
+      border-radius: 8px;
+      padding: 14px 28px;
+      font-size: 15px;
+    }
+    .model-option {
+      padding: 16px;
+      border: 1px solid #e9ecef;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .model-option:hover {
+      border-color: var(--snackbar-teal);
+    }
+    .model-option.selected {
+      border-color: var(--snackbar-teal);
+      background: rgba(53, 220, 200, 0.05);
+    }
+    .model-option input {
+      display: none;
+    }
+    .model-name {
+      font-weight: 600;
+      color: var(--snackbar-dark);
+      margin-bottom: 4px;
+    }
+    .model-desc {
+      font-size: 13px;
+      color: #6c757d;
+      margin-bottom: 8px;
+    }
+    .model-price {
+      font-size: 12px;
+      color: #868e96;
+      font-family: 'SF Mono', Monaco, monospace;
+    }
+    .cost-estimate {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 16px;
+      margin-top: 16px;
+    }
+    .cost-estimate-label {
+      font-size: 13px;
+      color: #6c757d;
+      margin-bottom: 4px;
+    }
+    .cost-estimate-value {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--snackbar-dark);
+    }
+    .progress-container {
+      display: none;
+    }
+    .progress-container.active {
+      display: block;
+    }
+    .progress {
+      height: 8px;
+      border-radius: 4px;
+      background: #e9ecef;
+      margin-bottom: 12px;
+    }
+    .progress-bar {
+      background: var(--snackbar-teal);
+      border-radius: 4px;
+    }
+    .progress-text {
+      font-size: 14px;
+      color: #6c757d;
+    }
+    .result-container {
+      display: none;
+    }
+    .result-container.active {
+      display: block;
+    }
+    .blog-preview {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .blog-preview-title {
+      font-weight: 600;
+      color: var(--snackbar-dark);
+      margin-bottom: 4px;
+    }
+    .blog-preview-blurb {
+      font-size: 13px;
+      color: #6c757d;
+    }
+    .btn-logout {
+      color: #6c757d;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .btn-logout:hover {
+      color: var(--snackbar-dark);
+    }
+    .alert {
+      border-radius: 8px;
+    }
+    .form-text {
+      font-size: 12px;
+      color: #868e96;
+    }
+    textarea.form-control {
+      resize: vertical;
+      min-height: 80px;
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container">
+      <a class="navbar-brand" href="/">
+        <svg xmlns="http://www.w3.org/2000/svg" width="256" height="68" fill="none"><path fill="#35DCC8" d="M255.061 59.553c-1.042-1.215-1.996-2.603-3.211-3.73-1.475-1.563-2.256-.261-3.731.346-3.124 1.215-4.338-.954-4.772-3.644a11.34 11.34 0 0 1 0-2.43c.434-1.475 1.215-2.863 2.082-4.165.521-.954 2.083-1.995.955-3.036-.781-1.042-1.736-2.083-2.95-2.777-1.823-.347-3.645-.26-5.38-1.128-.26-.607-.434-1.215-.434-1.909 0-.78-3.21-4.165-3.818-3.47.087 1.04-.087 2.168-.26 3.21-.434 3.818-1.649 7.722-4.512 10.499-2.95 2.863-7.289 5.466-11.367 3.21-.954-1.562-1.301-3.557-1.041-5.38.521-.52 1.041-1.04 1.215-1.735-.174-1.996-2.343-3.557-3.905-4.599-5.206-3.297-17.614 2.69-12.495 9.285-2.516.694-5.119 1.128-7.722 1.388 1.996-3.124 3.297-6.942 2.69-10.673-.087-.433-.174-.78-.261-1.214-1.822-4.6-6.421-7.55-11.366-7.376.347-.347.694-.78 1.041-1.128 2.69-2.43 5.119-5.987 3.644-9.544-1.388-2.69-3.818-4.686-6.594-5.64-.608-.26-1.215-.521-1.909-.608-.434-.087-.868-.087-1.389-.173-1.214-.087-2.516-.087-3.817.173-6.248.694-14.231 3.558-16.487 7.55 0 .086.087.26.087.346l-.173.174c-.608.954 1.388 2.516 1.995 3.21.261.26 1.909 1.562 1.736.52 4.338-5.292 15.098-9.284 22.126-7.722.347 5.467-5.814 9.805-11.454 13.45.087-.868.261-1.649.347-2.517.087-1.475.608-3.123-.086-4.425-.087-.607-4.512-4.772-3.471-2.43-.26 4.165-.955 8.244-1.388 12.322a59.222 59.222 0 0 0-2.43 1.562c-.173.52.868 1.822 1.996 2.776-.087.955-.087 1.822-.174 2.777-.26 3.123-.607 5.987.434 8.33-.173 0-.347 0-.521.086h-.173c-2.256 0-4.946-.086-6.855 1.389-.781.607-1.475 1.301-2.256 1.909-4.165 2.95-10.325 2.516-14.837.52-3.037-1.301-5.814-3.818-8.07-6.16-.347-.608-.781-1.128-1.215-1.649 0-.173.087-.434.087-.607 6.421-3.905 13.189-8.07 17.441-14.404 1.388-2.777 1.648-3.124-.695-5.293-.173-.173-1.735-1.649-1.908-1.041-.695 2.516-2.343 4.599-4.252 6.507-2.169 2.17-4.512 4.079-7.028 5.814 1.214-3.644 1.388-7.289-1.042-10.065-1.214-1.128-2.863-3.558-4.685-2.864-2.69 2.69-2.864 14.317-2.864 18.309-.086.173-.26.347-.347.52a.68.68 0 0 0-.347.347c-4.165 5.12-14.49 12.408-20.564 10.847.173-3.732 3.991-5.38 6.681-7.202.868-.26.087-1.128-.26-1.562-.955-.955-2.083-2.69-3.558-2.516-2.169.52-3.991 2.082-5.293 3.817-2.863 3.124-6.768 6.595-11.28 5.727-.434-1.909-.434-3.904-.26-5.9.26-.52.347-.955.087-1.388.694-3.037-3.124-6.335-5.814-7.029-3.384-.347-6.768 1.562-9.024 3.905-3.037 3.124-1.475 7.028 1.562 9.458-2.95 1.475-6.42 2.169-9.631 1.041-1.649-6.855-7.462-15.098-12.582-5.38-.52-2.516-2.082-5.032-1.648-7.722 0-.087 0-.26-.087-.347 0-.434.087-.781.087-1.215-.348-5.64-5.12-9.805-9.458-12.842-7.983-5.032-18.222-5.032-27.42-2.95 1.65-1.562 3.471-3.037 5.207-4.599 2.43-2.082 4.946-4.165 7.636-5.813 5.466-2.69 11.02-5.293 17.006-6.595L49.07 6.103c-.173.174-.433.347-.347.695.608 1.301 1.822 2.429 3.037 3.21.26.087.608.434.781.087 1.041-1.302 2.343-2.43 2.777-4.078.694-1.215-.347-2.343-1.128-3.21C52.715 1.07 50.632-.232 48.376.29 41.088.724 7.421 16.255 8.983 24.238c2.603 4.165 4.599 4.772 9.11 2.777 9.372-3.384 20.218-4.686 29.676-1.041 1.996.694 3.384 1.648 4.425 2.69a5.068 5.068 0 0 1 .434 4.598c-.174.781-.434 1.562-.694 2.343-.52 1.041-1.041 2.17-1.649 3.21-6.681 9.545-17.7 16.053-28.634 19.61-.607.174-1.214.434-1.822.694a74.08 74.08 0 0 1-12.321 2.603c.52-1.909 1.909-3.383 3.21-4.859.174-.173.434-.434.521-.694 0-.087-.087-.347-.174-.434.087-.173 0-.434-.086-.607-.174-.26-.26-.52-.434-.78 0-.261-.347-.782-.434-.782-.347-.434-.694-.868-1.128-1.301-.607-.521-1.388-1.476-2.256-1.476-1.215.781-2.343 1.736-3.384 2.777-1.649 1.562-3.037 3.991-1.996 6.247 1.389 2.343 3.471 4.426 6.074 5.38.347.174.608.347.955.434.347.087.694.174 1.04.174.782.26 1.65.347 2.604.173 4.338-.173 9.198-1.215 14.057-2.863 1.128-.26 2.169-.434 3.297-.694 4.425-1.476 9.978-4.078 14.75-7.289 5.033-2.69 9.458-6.16 11.801-10.933.781 4.078.868 8.243 1.475 12.321a11.227 11.227 0 0 0 2.864 2.864c.086 0 .607.347.694.173.173-1.041.26-2.082.434-3.037.607-4.078 1.822-9.11 5.987-10.933 1.648 7.81 9.631 12.842 17.093 9.111 2.517-1.475 5.727-2.516 7.55-4.685 3.383 5.553 9.197 7.201 14.403 2.863 2.343 2.95 6.161 5.12 9.978 3.991 4.946-1.388 9.545-4.251 13.45-7.549-.347 2.864-1.475 5.64-1.649 8.504.087 1.215 1.128 2.256 1.909 3.037 1.128 1.128 2.429 2.169 4.078 2.43 1.562-.435.434-4.773.434-6.075-.087-.78-.174-1.561-.174-2.256V53.74c0-1.996.087-3.905.347-5.9-.173 1.388 2.43 2.516 3.384 3.123 2.69 1.822 5.12 4.165 8.157 5.38 3.037 1.214 6.421 1.648 9.718 1.562.607 0 1.128 0 1.735-.087h.347c.608 4.946 5.467 9.458 10.5 9.978 2.689 0 5.466.087 7.809-1.475 2.516-1.475 4.772-3.297 6.941-5.38 1.822-1.561 3.471-3.384 5.12-5.292.781-.695 1.562-1.476 2.256-2.17 1.822 0 3.644 0 5.553-.086 3.21-.174 6.508-.695 9.631-1.649 3.298 1.909 7.202-.174 9.285-2.95 2.603 3.644 6.854 7.202 11.627 6.16 6.507-2.082 10.672-8.33 11.019-15.01.608.52 1.215 1.127 1.823 1.561.607.52 1.301.868 1.995 1.215-3.644 5.38-2.863 11.367 2.43 15.185 1.735 1.561 3.991 2.516 6.247 2.95.955.52 1.822.954 2.69 1.388 1.041.607 2.082-.26 2.69-1.128 0-.434-.347-1.128-.694-1.562ZM84.386 48.881c-.695.173-1.389.173-2.17.086 0-4.425 4.946-7.201 8.764-7.982-1.128 3.21-3.905 5.9-6.595 7.896Zm50.326-15.706c-.261-.26-.174-.954-.174-1.301 0-.434 0-.955.087-1.389.173-1.04.521-1.995 1.128-2.776-.087.087.087.52.087.694.086.26.086.52.086.781 0 .52-.173 1.128-.347 1.649-.173.433-.26.78-.433 1.128-.087.173-.174.433-.261.607 0 .26 0 .52-.173.607Zm38.525 26.205c-.347.173-.781.26-1.128.347-.434.087-.781.26-1.214.347-.781.173-1.649.347-2.517.434a12.3 12.3 0 0 1-2.516 0c-.868-.087-1.735-.347-2.516-.695l-.521-.26c-.174-.173-.174-.434-.174-.607v-1.041c0-.434.087-.781.261-1.128.087-.174.087-.26.173-.434.434-.694.868-1.128 1.649-1.475 2.429-1.302 5.033-1.736 7.722-1.823.087.087.261.087.347.174.174.087.261 0 .261-.174 3.123 0 6.247.434 9.284.695-2.69 2.256-5.727 4.338-9.111 5.64Zm18.135-18.569c-1.388 3.384-3.905 6.074-6.594 8.59-.261.087-.521.174-.781.174-.174 0-.261.086-.434.086-3.731-.086-7.462-.26-11.28-.347-.087 0-.26 0-.347-.086-.087-2.083.434-4.426.434-6.421.086-1.649.26-3.21.433-4.86 6.161-2.602 13.016-4.858 19.697-3.383.087.347.174.694.174 1.04a28.659 28.659 0 0 1-1.302 5.207Zm18.655 2.95a26.596 26.596 0 0 1-5.726 3.297c.954-2.169 3.037-3.644 5.206-4.512a18.547 18.547 0 0 1 2.95-.78c-.694.694-1.562 1.388-2.43 1.995Zm42.344 13.71c0-.087 0-.087 0 0 .087.087.173.087.173.173a.185.185 0 0 0-.173-.173Z"/></svg>
+      </a>
+      <a href="#" class="btn-logout" id="logoutBtn">Sign Out</a>
+    </div>
+  </nav>
+
+  <div class="main-container">
+    <div id="formSection">
+      <div class="card">
+        <div class="card-header">API Configuration</div>
+        <div class="card-body">
+          <div class="mb-3">
+            <label for="apiKey" class="form-label">OpenAI API Key</label>
+            <input type="password" class="form-control" id="apiKey" placeholder="sk-...">
+            <div class="form-text">Your API key is not stored and is only used for this session.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Select Model</div>
+        <div class="card-body" id="modelContainer">
+          <label class="model-option selected">
+            <input type="radio" name="model" value="gpt-4o-mini" checked>
+            <div class="model-name">GPT-4o Mini</div>
+            <div class="model-desc">Great balance of quality and cost</div>
+            <div class="model-price">$0.15 / 1M input tokens, $0.60 / 1M output tokens</div>
+          </label>
+          <label class="model-option">
+            <input type="radio" name="model" value="gpt-4o">
+            <div class="model-name">GPT-4o</div>
+            <div class="model-desc">Best quality, higher cost</div>
+            <div class="model-price">$2.50 / 1M input tokens, $10.00 / 1M output tokens</div>
+          </label>
+          <label class="model-option">
+            <input type="radio" name="model" value="gpt-4-turbo">
+            <div class="model-name">GPT-4 Turbo</div>
+            <div class="model-desc">High quality, premium pricing</div>
+            <div class="model-price">$10.00 / 1M input tokens, $30.00 / 1M output tokens</div>
+          </label>
+          <label class="model-option">
+            <input type="radio" name="model" value="gpt-3.5-turbo">
+            <div class="model-name">GPT-3.5 Turbo</div>
+            <div class="model-desc">Fastest, most economical</div>
+            <div class="model-price">$0.50 / 1M input tokens, $1.50 / 1M output tokens</div>
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">Generation Settings</div>
+        <div class="card-body">
+          <div class="mb-3">
+            <label for="blogCount" class="form-label">Number of Blog Posts</label>
+            <input type="number" class="form-control" id="blogCount" value="10" min="1" max="30">
+            <div class="form-text">Generate 1-30 blog posts. 2 posts per API call.</div>
+          </div>
+          <div class="mb-3">
+            <label for="topics" class="form-label">Topics (optional)</label>
+            <textarea class="form-control" id="topics" placeholder="e.g., App store optimization, paywall design, onboarding flows..."></textarea>
+            <div class="form-text">Leave blank for default UI/UX design topics.</div>
+          </div>
+
+          <div class="cost-estimate">
+            <div class="cost-estimate-label">Estimated Cost</div>
+            <div class="cost-estimate-value" id="costEstimate">~$0.02</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="errorAlert" class="alert alert-danger d-none"></div>
+
+      <button class="btn btn-primary w-100" id="generateBtn">Generate Blog Posts</button>
+    </div>
+
+    <div class="progress-container" id="progressSection">
+      <div class="card">
+        <div class="card-body">
+          <div class="progress">
+            <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+          </div>
+          <div class="progress-text" id="progressText">Generating blogs...</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="result-container" id="resultSection">
+      <div class="card">
+        <div class="card-header">Generated Blog Posts</div>
+        <div class="card-body">
+          <div id="blogPreviews"></div>
+        </div>
+      </div>
+
+      <div class="d-flex gap-3">
+        <button class="btn btn-primary flex-grow-1" id="downloadBtn">Download CSV</button>
+        <button class="btn btn-outline-secondary" id="resetBtn">Generate More</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const MODEL_COSTS = {
+      'gpt-4o': { input: 2.50, output: 10.00 },
+      'gpt-4o-mini': { input: 0.15, output: 0.60 },
+      'gpt-4-turbo': { input: 10.00, output: 30.00 },
+      'gpt-3.5-turbo': { input: 0.50, output: 1.50 }
+    };
+
+    // Estimated tokens per blog: ~500 input, ~2000 output
+    const TOKENS_PER_BLOG = { input: 500, output: 2000 };
+
+    let generatedCSV = null;
+
+    // Model selection
+    document.querySelectorAll('.model-option').forEach(option => {
+      option.addEventListener('click', () => {
+        document.querySelectorAll('.model-option').forEach(o => o.classList.remove('selected'));
+        option.classList.add('selected');
+        option.querySelector('input').checked = true;
+        updateCostEstimate();
+      });
+    });
+
+    // Cost estimate
+    function updateCostEstimate() {
+      const model = document.querySelector('input[name="model"]:checked').value;
+      const count = parseInt(document.getElementById('blogCount').value) || 10;
+      const costs = MODEL_COSTS[model];
+
+      const inputCost = (TOKENS_PER_BLOG.input * count / 1000000) * costs.input;
+      const outputCost = (TOKENS_PER_BLOG.output * count / 1000000) * costs.output;
+      const totalCost = inputCost + outputCost;
+
+      document.getElementById('costEstimate').textContent = `~$${totalCost.toFixed(2)}`;
+    }
+
+    document.getElementById('blogCount').addEventListener('input', updateCostEstimate);
+    updateCostEstimate();
+
+    // Logout
+    document.getElementById('logoutBtn').addEventListener('click', async (e) => {
+      e.preventDefault();
+      await fetch('/api/logout', { method: 'POST' });
+      window.location.href = '/login';
+    });
+
+    // Generate
+    document.getElementById('generateBtn').addEventListener('click', async () => {
+      const apiKey = document.getElementById('apiKey').value.trim();
+      const model = document.querySelector('input[name="model"]:checked').value;
+      const count = parseInt(document.getElementById('blogCount').value) || 10;
+      const topics = document.getElementById('topics').value.trim();
+      const errorAlert = document.getElementById('errorAlert');
+
+      if (!apiKey) {
+        errorAlert.textContent = 'Please enter your OpenAI API key.';
+        errorAlert.classList.remove('d-none');
+        return;
+      }
+
+      errorAlert.classList.add('d-none');
+      document.getElementById('formSection').style.display = 'none';
+      document.getElementById('progressSection').classList.add('active');
+
+      const progressBar = document.getElementById('progressBar');
+      const progressText = document.getElementById('progressText');
+
+      // Simulate progress
+      let progress = 0;
+      const progressInterval = setInterval(() => {
+        progress += Math.random() * 10;
+        if (progress > 90) progress = 90;
+        progressBar.style.width = `${progress}%`;
+      }, 500);
+
+      try {
+        const res = await fetch('/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey, model, count, topics })
+        });
+
+        clearInterval(progressInterval);
+
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || 'Generation failed');
+        }
+
+        const data = await res.json();
+        generatedCSV = data.csv;
+
+        progressBar.style.width = '100%';
+        progressText.textContent = `Generated ${data.count} blog posts`;
+
+        setTimeout(() => {
+          document.getElementById('progressSection').classList.remove('active');
+          document.getElementById('resultSection').classList.add('active');
+
+          const previews = document.getElementById('blogPreviews');
+          previews.innerHTML = data.blogs.map(blog => `
+            <div class="blog-preview">
+              <div class="blog-preview-title">${blog.title}</div>
+              <div class="blog-preview-blurb">${blog.blurb}</div>
+            </div>
+          `).join('');
+        }, 500);
+
+      } catch (error) {
+        clearInterval(progressInterval);
+        document.getElementById('progressSection').classList.remove('active');
+        document.getElementById('formSection').style.display = 'block';
+        errorAlert.textContent = error.message;
+        errorAlert.classList.remove('d-none');
+      }
+    });
+
+    // Download CSV
+    document.getElementById('downloadBtn').addEventListener('click', () => {
+      if (!generatedCSV) return;
+
+      const blob = new Blob([generatedCSV], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `snackbar-blogs-${new Date().toISOString().split('T')[0]}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // Reset
+    document.getElementById('resetBtn').addEventListener('click', () => {
+      document.getElementById('resultSection').classList.remove('active');
+      document.getElementById('formSection').style.display = 'block';
+      document.getElementById('progressBar').style.width = '0%';
+      generatedCSV = null;
+    });
+  </script>
+</body>
+</html>
