@@ -3,7 +3,6 @@ const session = require('express-session');
 const OpenAI = require('openai');
 const path = require('path');
 const fs = require('fs');
-const https = require('https');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -94,21 +93,19 @@ app.get('/api/models', requireAuth, (req, res) => {
   res.json(MODEL_PRICING);
 });
 
-// Helper to download image from URL
-function downloadImage(url, filepath) {
-  return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(filepath);
-    https.get(url, (response) => {
-      response.pipe(file);
-      file.on('finish', () => {
-        file.close();
-        resolve(filepath);
-      });
-    }).on('error', (err) => {
-      fs.unlink(filepath, () => {});
-      reject(err);
-    });
-  });
+// Helper to download image from URL using fetch
+async function downloadImage(url, filepath) {
+  console.log('Downloading image from:', url.substring(0, 100) + '...');
+
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to download image: ${response.status} ${response.statusText}`);
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  fs.writeFileSync(filepath, buffer);
+  console.log('Image saved to:', filepath);
+  return filepath;
 }
 
 // Ensure images directory exists
@@ -123,14 +120,31 @@ app.get('/api/generate-stream', requireAuth, async (req, res) => {
   const shouldGenerateImages = generateImages === 'true';
   const selectedImageModel = imageModel || 'dall-e-3';
 
+  console.log('=== SSE CONNECTION OPENED ===');
+  console.log('Query params:', {
+    model: req.query.model,
+    count: req.query.count,
+    callsPerArticle: req.query.callsPerArticle,
+    generateImages: req.query.generateImages,
+    imageModel: req.query.imageModel,
+    hasApiKey: !!req.query.apiKey,
+    hasTopics: !!req.query.topics
+  });
+
   // Set SSE headers
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
 
   const sendEvent = (event, data) => {
+    console.log(`SSE Event: ${event}`, event === 'progress' ? data.message : '(data omitted)');
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
+
+  // Handle client disconnect
+  req.on('close', () => {
+    console.log('=== SSE CONNECTION CLOSED BY CLIENT ===');
+  });
 
   try {
     if (!apiKey || !model || !count) {
@@ -213,8 +227,10 @@ Return as JSON:
 }`;
 
       console.log(`Article ${blogIndex + 1}: Initial generation...`);
+      const articleStartTime = Date.now();
 
       try {
+        const initialStartTime = Date.now();
         const initialCompletion = await openai.chat.completions.create({
           model: model,
           messages: [
@@ -226,7 +242,13 @@ Return as JSON:
           response_format: { type: "json_object" }
         });
 
-        blogData = JSON.parse(initialCompletion.choices[0].message.content.trim());
+        const rawResponse = initialCompletion.choices[0].message.content.trim();
+        console.log(`Article ${blogIndex + 1}: Initial API response received (${Date.now() - initialStartTime}ms)`);
+        console.log(`Article ${blogIndex + 1}: Raw response length: ${rawResponse.length} chars`);
+
+        blogData = JSON.parse(rawResponse);
+        console.log(`Article ${blogIndex + 1}: Parsed successfully - Title: "${blogData.title}"`);
+        console.log(`Article ${blogIndex + 1}: Initial content length: ${blogData.content?.length || 0} chars`);
         currentStep++;
       } catch (err) {
         console.error(`=== ARTICLE ${blogIndex + 1} INITIAL ERROR ===`);
@@ -269,6 +291,8 @@ Return ONLY the complete updated content (including original + new sections) as 
 }`;
 
         console.log(`Article ${blogIndex + 1}: Expansion pass ${pass + 1}/${depth}...`);
+        const prevContentLength = blogData.content?.length || 0;
+        const expansionStartTime = Date.now();
 
         try {
           const expandCompletion = await openai.chat.completions.create({
@@ -283,8 +307,14 @@ Return ONLY the complete updated content (including original + new sections) as 
           });
 
           const expanded = JSON.parse(expandCompletion.choices[0].message.content.trim());
+          console.log(`Article ${blogIndex + 1}: Expansion ${pass + 1} received (${Date.now() - expansionStartTime}ms)`);
+
           if (expanded.content) {
             blogData.content = expanded.content;
+            const newContentLength = blogData.content.length;
+            console.log(`Article ${blogIndex + 1}: Content grew from ${prevContentLength} to ${newContentLength} chars (+${newContentLength - prevContentLength})`);
+          } else {
+            console.log(`Article ${blogIndex + 1}: Expansion ${pass + 1} returned no content field`);
           }
           currentStep++;
         } catch (err) {
@@ -322,14 +352,18 @@ Return ONLY the complete updated content (including original + new sections) as 
             imageParams.quality = selectedImageModel === 'dall-e-3-hd' ? 'hd' : 'standard';
           } else if (selectedImageModel === 'dall-e-2') {
             imageParams.model = 'dall-e-2';
-            imageParams.size = '1024x1024'; // DALL-E 2 max size
-          } else if (selectedImageModel === 'gpt-image-1') {
-            imageParams.model = 'gpt-image-1';
-            imageParams.size = '1536x1024';
-            imageParams.quality = 'medium';
+            imageParams.size = '1024x1024';
+          } else {
+            // Default to DALL-E 3 for unknown models
+            console.log(`Unknown image model ${selectedImageModel}, falling back to dall-e-3`);
+            imageParams.model = 'dall-e-3';
+            imageParams.size = '1792x1024';
+            imageParams.quality = 'standard';
           }
 
+          console.log('Image params:', JSON.stringify(imageParams, null, 2));
           const imageResponse = await openai.images.generate(imageParams);
+          console.log('Image response received, URL length:', imageResponse.data[0]?.url?.length);
 
           const imageUrl = imageResponse.data[0].url;
           const imageName = `${blogData.slug}-${Date.now()}.png`;
@@ -363,8 +397,10 @@ Return ONLY the complete updated content (including original + new sections) as 
       }
 
       blogs.push(blogData);
-      console.log(`Article ${blogIndex + 1} complete (${depth} passes)`);
-      console.log(`Batch complete: ${blogs.length}/${blogCount} blogs generated`);
+      const articleTime = ((Date.now() - articleStartTime) / 1000).toFixed(1);
+      console.log(`Article ${blogIndex + 1} complete (${depth} passes) in ${articleTime}s`);
+      console.log(`Article ${blogIndex + 1} final content: ${blogData.content?.length || 0} chars, image: ${blogData.image ? 'yes' : 'no'}`);
+      console.log(`Progress: ${blogs.length}/${blogCount} blogs generated`);
 
       sendEvent('progress', {
         message: `Generated ${blogs.length} of ${blogCount} blogs`,
@@ -381,8 +417,10 @@ Return ONLY the complete updated content (including original + new sections) as 
     console.log('=== GENERATION COMPLETE ===');
     console.log(`Total blogs: ${blogs.length}`);
     console.log('Blog titles:', blogs.map(b => b.title));
+    console.log('Content lengths:', blogs.map(b => b.content?.length || 0));
     console.log('Images generated:', blogs.filter(b => b.image).length);
 
+    console.log('=== GENERATING CSV ===');
     // Generate CSV
     const today = new Date();
     const dateStr = `${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}/${today.getFullYear()}`;
@@ -406,6 +444,8 @@ Return ONLY the complete updated content (including original + new sections) as 
     }
 
     const csv = csvRows.join('\n');
+    console.log(`CSV generated: ${csv.length} chars, ${csvRows.length} rows`);
+    console.log('=== SENDING RESPONSE ===');
 
     sendEvent('complete', {
       success: true,
