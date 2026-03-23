@@ -494,6 +494,35 @@ app.get('/api/jobs/:id/csv', requireAuth, (req, res) => {
   }
 });
 
+// Cancel a running job
+app.post('/api/jobs/:id/cancel', requireAuth, (req, res) => {
+  const jobId = req.params.id;
+  log('API', `POST /api/jobs/${jobId}/cancel - Cancelling job`);
+
+  const job = loadJob(jobId);
+  if (!job) {
+    log('API', `Job not found: ${jobId}`);
+    return res.status(404).json({ error: 'Job not found' });
+  }
+
+  if (job.status !== 'running' && job.status !== 'pending') {
+    log('API', `Job not cancellable (status: ${job.status}): ${jobId}`);
+    return res.status(400).json({ error: 'Job is not running' });
+  }
+
+  // Mark job as cancelled
+  job.status = 'failed';
+  job.error = 'Cancelled by user';
+  job.completedAt = new Date().toISOString();
+  saveJob(job);
+
+  // Remove from running jobs map (will cause the processJob loop to stop)
+  runningJobs.delete(jobId);
+
+  log('API', `Job cancelled: ${jobId}`);
+  res.json({ success: true });
+});
+
 // Delete job
 app.delete('/api/jobs/:id', requireAuth, (req, res) => {
   const jobId = req.params.id;
@@ -600,6 +629,12 @@ CRITICAL: You must return ONLY valid JSON. No markdown, no code blocks, no expla
 
     // Generate one blog at a time
     for (let blogIndex = 0; blogIndex < count; blogIndex++) {
+      // Check if job was cancelled
+      if (!runningJobs.has(jobId)) {
+        log('JOB', `Job ${jobId} was cancelled, stopping processing`);
+        return; // Exit without saving - job already marked as cancelled
+      }
+
       // Update progress
       job.progress.current = blogIndex;
       job.progress.message = `Creating article ${blogIndex + 1} of ${count}...`;

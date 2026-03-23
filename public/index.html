@@ -603,7 +603,10 @@
             <div class="progress">
               <div class="progress-bar" style="width: ${Math.max(progressPercent, 3)}%"></div>
             </div>
-            <div class="progress-text">${job.progress.message}</div>
+            <div class="d-flex justify-content-between align-items-center">
+              <div class="progress-text">${job.progress.message}</div>
+              <button class="btn btn-sm btn-outline-danger" onclick="cancelJob('${job.id}')">Cancel</button>
+            </div>
           </div>
         `;
       }
@@ -751,6 +754,28 @@
         downloadJobCsv(currentJobId);
       }
     });
+
+    async function cancelJob(jobId) {
+      log('ACTION', `Cancel requested for job: ${jobId}`);
+      if (!confirm('Are you sure you want to cancel this job?')) {
+        log('ACTION', 'Cancel aborted by user');
+        return;
+      }
+
+      try {
+        log('ACTION', `Sending POST /api/jobs/${jobId}/cancel`);
+        const response = await fetch(`/api/jobs/${jobId}/cancel`, { method: 'POST' });
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || 'Failed to cancel job');
+        }
+        log('ACTION', `Job cancelled: ${jobId}`);
+        loadJobs();
+      } catch (err) {
+        log('ACTION', `Cancel failed: ${err.message}`);
+        alert('Error cancelling job: ' + err.message);
+      }
+    }
 
     async function deleteJob(jobId) {
       log('ACTION', `Delete requested for job: ${jobId}`);
