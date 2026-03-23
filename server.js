@@ -404,6 +404,11 @@ app.post('/api/jobs', requireAuth, async (req, res) => {
   const blogCount = Math.min(Math.max(parseInt(count), 1), 30);
   const depth = Math.min(Math.max(parseInt(callsPerArticle) || 2, 1), 5);
 
+  // Calculate total steps for more granular progress
+  // Each article has: 1 initial + (depth-1) expansions + 1 image (if enabled)
+  const stepsPerArticle = 1 + (depth - 1) + (generateImages ? 1 : 0);
+  const totalSteps = blogCount * stepsPerArticle;
+
   // Create job
   const job = {
     id: uuidv4(),
@@ -421,7 +426,7 @@ app.post('/api/jobs', requireAuth, async (req, res) => {
     },
     progress: {
       current: 0,
-      total: blogCount,
+      total: totalSteps,
       message: 'Starting generation...'
     },
     results: null,
@@ -638,8 +643,7 @@ CRITICAL: You must return ONLY valid JSON. No markdown, no code blocks, no expla
         return; // Exit without saving - job already marked as cancelled
       }
 
-      // Update progress
-      job.progress.current = blogIndex;
+      // Update progress - starting article
       job.progress.message = `Creating article ${blogIndex + 1} of ${count}...`;
       saveJob(job);
 
@@ -696,8 +700,12 @@ Return as JSON:
           blurbLength: blogData.blurb?.length,
           contentLength: blogData.content?.length
         });
+        // Increment progress after successful initial generation
+        job.progress.current++;
+        saveJob(job);
       } catch (err) {
         logError('JOB', `Job ${jobId} - Article ${blogIndex + 1} initial generation failed`, err);
+        job.progress.current++; // Still increment to keep progress moving
         continue;
       }
 
@@ -751,8 +759,12 @@ Return ONLY the complete updated content (including original + new sections) as 
           } else {
             log('JOB', `Job ${jobId} - Article ${blogIndex + 1}: Expansion ${pass + 1} returned no content`);
           }
+          // Increment progress after expansion
+          job.progress.current++;
+          saveJob(job);
         } catch (err) {
           logError('JOB', `Job ${jobId} - Article ${blogIndex + 1} expansion ${pass + 1} failed`, err);
+          job.progress.current++; // Still increment to keep progress moving
         }
       }
 
@@ -792,17 +804,22 @@ Return ONLY the complete updated content (including original + new sections) as 
           logError('JOB', `Job ${jobId} - Article ${blogIndex + 1} image generation failed`, imgErr);
           blogData.image = '';
         }
-      } else {
-        log('JOB', `Job ${jobId} - Article ${blogIndex + 1}: Skipping image generation`);
+        // Increment progress after image generation
+        job.progress.current++;
+        saveJob(job);
+      } else if (blogData) {
+        // No image generation requested
         blogData.image = '';
       }
 
-      blogs.push(blogData);
-      log('JOB', `Job ${jobId} - Article ${blogIndex + 1}/${count} complete`, {
-        title: blogData.title,
-        contentLength: blogData.content?.length,
-        hasImage: !!blogData.image
-      });
+      if (blogData) {
+        blogs.push(blogData);
+        log('JOB', `Job ${jobId} - Article ${blogIndex + 1}/${count} complete`, {
+          title: blogData.title,
+          contentLength: blogData.content?.length,
+          hasImage: !!blogData.image
+        });
+      }
     }
 
     if (blogs.length === 0) {
@@ -840,7 +857,7 @@ Return ONLY the complete updated content (including original + new sections) as 
     // Mark job as completed
     job.status = 'completed';
     job.completedAt = new Date().toISOString();
-    job.progress.current = count;
+    job.progress.current = job.progress.total; // Ensure 100% complete
     job.progress.message = `Generated ${blogs.length} blog posts`;
     job.results = {
       blogs,
