@@ -3,13 +3,151 @@ const session = require('express-session');
 const OpenAI = require('openai');
 const path = require('path');
 const fs = require('fs');
+const { v4: uuidv4 } = require('uuid');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// ============== Debug Logging ==============
+const DEBUG = process.env.DEBUG !== 'false'; // Enable by default, disable with DEBUG=false
+
+function log(category, message, data = null) {
+  const timestamp = new Date().toISOString();
+  const prefix = `[${timestamp}] [${category}]`;
+  if (data) {
+    console.log(prefix, message, JSON.stringify(data, null, 2));
+  } else {
+    console.log(prefix, message);
+  }
+}
+
+function logError(category, message, error) {
+  const timestamp = new Date().toISOString();
+  console.error(`[${timestamp}] [${category}] ERROR:`, message);
+  if (error) {
+    console.error(`[${timestamp}] [${category}] Error details:`, error.message);
+    if (error.stack) {
+      console.error(`[${timestamp}] [${category}] Stack:`, error.stack);
+    }
+    if (error.response?.data) {
+      console.error(`[${timestamp}] [${category}] API Response:`, JSON.stringify(error.response.data, null, 2));
+    }
+  }
+}
+
 // Environment variables for auth
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'password';
+
+// Job storage configuration
+const DATA_DIR = path.join(__dirname, 'data', 'jobs');
+const MAX_CONCURRENT_JOBS = 5;
+
+// Ensure data directory exists
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+// In-memory tracking of running jobs (for background processing)
+const runningJobs = new Map();
+
+// ============== Job Storage Functions ==============
+
+function saveJob(job) {
+  const filePath = path.join(DATA_DIR, `${job.id}.json`);
+  try {
+    fs.writeFileSync(filePath, JSON.stringify(job, null, 2));
+    log('STORAGE', `Job saved: ${job.id}`, { status: job.status, progress: job.progress?.message });
+    return job;
+  } catch (err) {
+    logError('STORAGE', `Failed to save job ${job.id}`, err);
+    throw err;
+  }
+}
+
+function loadJob(jobId) {
+  const filePath = path.join(DATA_DIR, `${jobId}.json`);
+  log('STORAGE', `Loading job: ${jobId}`);
+  if (!fs.existsSync(filePath)) {
+    log('STORAGE', `Job not found: ${jobId}`);
+    return null;
+  }
+  try {
+    const job = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    log('STORAGE', `Job loaded: ${jobId}`, { status: job.status });
+    return job;
+  } catch (err) {
+    logError('STORAGE', `Failed to load job ${jobId}`, err);
+    return null;
+  }
+}
+
+function listJobs() {
+  log('STORAGE', `Listing jobs from: ${DATA_DIR}`);
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      log('STORAGE', 'Data directory does not exist, creating...');
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+      return [];
+    }
+    const files = fs.readdirSync(DATA_DIR).filter(f => f.endsWith('.json'));
+    log('STORAGE', `Found ${files.length} job files`);
+    const jobs = files.map(f => {
+      try {
+        const job = JSON.parse(fs.readFileSync(path.join(DATA_DIR, f), 'utf8'));
+        return {
+          id: job.id,
+          status: job.status,
+          createdAt: job.createdAt,
+          completedAt: job.completedAt,
+          config: {
+            model: job.config.model,
+            count: job.config.count,
+            generateImages: job.config.generateImages,
+            imageModel: job.config.imageModel
+          },
+          progress: job.progress,
+          error: job.error,
+          resultCount: job.results?.count || 0
+        };
+      } catch (err) {
+        logError('STORAGE', `Failed to parse job file: ${f}`, err);
+        return null;
+      }
+    }).filter(Boolean);
+    // Sort by creation date, newest first
+    return jobs.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  } catch (err) {
+    logError('STORAGE', 'Failed to list jobs', err);
+    return [];
+  }
+}
+
+function deleteJob(jobId) {
+  const filePath = path.join(DATA_DIR, `${jobId}.json`);
+  log('STORAGE', `Deleting job: ${jobId}`);
+  if (fs.existsSync(filePath)) {
+    try {
+      fs.unlinkSync(filePath);
+      log('STORAGE', `Job deleted: ${jobId}`);
+      return true;
+    } catch (err) {
+      logError('STORAGE', `Failed to delete job ${jobId}`, err);
+      return false;
+    }
+  }
+  log('STORAGE', `Job not found for deletion: ${jobId}`);
+  return false;
+}
+
+function getRunningJobCount() {
+  const jobs = listJobs();
+  const count = jobs.filter(j => j.status === 'running' || j.status === 'pending').length;
+  log('STORAGE', `Running job count: ${count}`);
+  return count;
+}
+
+// ============== Express Setup ==============
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -34,11 +172,9 @@ app.use(session({
 
 // Auth middleware
 function requireAuth(req, res, next) {
-  console.log('Auth check:', { authenticated: req.session?.authenticated, path: req.path });
   if (req.session.authenticated) {
     next();
   } else {
-    console.log('Auth rejected for:', req.path);
     res.status(401).json({ error: 'Unauthorized' });
   }
 }
@@ -93,20 +229,7 @@ app.get('/api/models', requireAuth, (req, res) => {
   res.json(MODEL_PRICING);
 });
 
-// Helper to download image from URL using fetch
-async function downloadImage(url, filepath) {
-  console.log('Downloading image from:', url.substring(0, 100) + '...');
-
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to download image: ${response.status} ${response.statusText}`);
-  }
-
-  const buffer = Buffer.from(await response.arrayBuffer());
-  fs.writeFileSync(filepath, buffer);
-  console.log('Image saved to:', filepath);
-  return filepath;
-}
+// ============== Image Generation ==============
 
 // Ensure images directory exists
 const imagesDir = path.join(__dirname, 'public', 'generated-images');
@@ -114,63 +237,348 @@ if (!fs.existsSync(imagesDir)) {
   fs.mkdirSync(imagesDir, { recursive: true });
 }
 
-// Generate blogs with Server-Sent Events for real-time progress
-app.get('/api/generate-stream', requireAuth, async (req, res) => {
-  const { apiKey, model, count, callsPerArticle, generateImages, imageModel, topics } = req.query;
-  const shouldGenerateImages = generateImages === 'true';
-  const selectedImageModel = imageModel || 'dall-e-3';
+// Helper to download image from URL using fetch
+async function downloadImage(url, filepath) {
+  log('IMAGE', `Downloading image from: ${url.substring(0, 100)}...`);
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to download image: ${response.status} ${response.statusText}`);
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    log('IMAGE', `Downloaded ${buffer.length} bytes`);
+    fs.writeFileSync(filepath, buffer);
+    log('IMAGE', `Image saved to: ${filepath}`);
+    return filepath;
+  } catch (err) {
+    logError('IMAGE', `Failed to download image`, err);
+    throw err;
+  }
+}
 
-  console.log('=== SSE CONNECTION OPENED ===');
-  console.log('Query params:', {
-    model: req.query.model,
-    count: req.query.count,
-    callsPerArticle: req.query.callsPerArticle,
-    generateImages: req.query.generateImages,
-    imageModel: req.query.imageModel,
-    hasApiKey: !!req.query.apiKey,
-    hasTopics: !!req.query.topics
+// Generate image using DALL-E
+async function generateDallEImage(openai, title, customPrompt, imageModel) {
+  log('DALL-E', `Generating image for: "${title.substring(0, 50)}..."`);
+  log('DALL-E', `Model: ${imageModel}, Custom prompt: ${customPrompt ? 'yes' : 'no'}`);
+
+  const prompt = `Modern, minimalist abstract illustration representing "${title}". Clean geometric shapes, subtle gradients, professional design aesthetic. No text, no logos, no words, no letters. Soft teal and neutral color palette. ${customPrompt || ''} Suitable as a blog hero image.`;
+
+  let imageParams = {
+    prompt: prompt,
+    n: 1
+  };
+
+  if (imageModel === 'dall-e-3' || imageModel === 'dall-e-3-hd') {
+    imageParams.model = 'dall-e-3';
+    imageParams.size = '1792x1024';
+    imageParams.quality = imageModel === 'dall-e-3-hd' ? 'hd' : 'standard';
+  } else if (imageModel === 'dall-e-2') {
+    imageParams.model = 'dall-e-2';
+    imageParams.size = '1024x1024';
+  } else {
+    imageParams.model = 'dall-e-3';
+    imageParams.size = '1792x1024';
+    imageParams.quality = 'standard';
+  }
+
+  log('DALL-E', `Image params:`, imageParams);
+
+  try {
+    const startTime = Date.now();
+    const imageResponse = await openai.images.generate(imageParams);
+    const duration = Date.now() - startTime;
+    log('DALL-E', `Image generated in ${duration}ms, URL length: ${imageResponse.data[0]?.url?.length}`);
+    return imageResponse.data[0].url;
+  } catch (err) {
+    logError('DALL-E', `Failed to generate image`, err);
+    throw err;
+  }
+}
+
+// Generate image using Nano Banana (Gemini)
+async function generateNanoBananaImage(title, customPrompt, imageModel, geminiApiKey) {
+  log('NANO-BANANA', `Generating image for: "${title.substring(0, 50)}..."`);
+  log('NANO-BANANA', `Model: ${imageModel}, Custom prompt: ${customPrompt ? 'yes' : 'no'}`);
+  log('NANO-BANANA', `API key provided: ${geminiApiKey ? 'yes (length: ' + geminiApiKey.length + ')' : 'no'}`);
+
+  try {
+    const { GoogleGenAI } = require('@google/genai');
+    log('NANO-BANANA', 'GoogleGenAI module loaded');
+
+    const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+    log('NANO-BANANA', 'GoogleGenAI client created');
+
+    const prompt = `Modern, minimalist abstract illustration representing "${title}". Clean geometric shapes, subtle gradients, professional design aesthetic. No text, no logos, no words, no letters. Soft teal and neutral color palette. ${customPrompt || ''}`;
+
+    // Use Imagen 3 for image generation
+    const modelName = imageModel === 'nano-banana-pro'
+      ? 'imagen-3.0-generate-002'
+      : 'imagen-3.0-generate-001';
+
+    log('NANO-BANANA', `Using model: ${modelName}`);
+    log('NANO-BANANA', `Prompt length: ${prompt.length} chars`);
+
+    const startTime = Date.now();
+    const response = await ai.models.generateImages({
+      model: modelName,
+      prompt: prompt,
+      config: {
+        numberOfImages: 1,
+        aspectRatio: '16:9',
+      }
+    });
+    const duration = Date.now() - startTime;
+    log('NANO-BANANA', `API call completed in ${duration}ms`);
+    log('NANO-BANANA', `Response keys: ${Object.keys(response || {}).join(', ')}`);
+
+    // Extract the generated image
+    const generatedImages = response.generatedImages;
+    log('NANO-BANANA', `Generated images count: ${generatedImages?.length || 0}`);
+
+    if (!generatedImages || generatedImages.length === 0) {
+      log('NANO-BANANA', `Full response:`, response);
+      throw new Error('No images generated from Nano Banana');
+    }
+
+    // Get base64 image data
+    const imageData = generatedImages[0].image?.imageBytes;
+    log('NANO-BANANA', `Image data present: ${imageData ? 'yes' : 'no'}`);
+
+    if (!imageData) {
+      log('NANO-BANANA', `First image object:`, generatedImages[0]);
+      throw new Error('No image data in Nano Banana response');
+    }
+
+    const buffer = Buffer.from(imageData, 'base64');
+    log('NANO-BANANA', `Image buffer size: ${buffer.length} bytes`);
+    return buffer;
+  } catch (err) {
+    logError('NANO-BANANA', `Failed to generate image`, err);
+    throw err;
+  }
+}
+
+// ============== Job-Based API Endpoints ==============
+
+// Create new generation job
+app.post('/api/jobs', requireAuth, async (req, res) => {
+  log('API', 'POST /api/jobs - Creating new job');
+  log('API', 'Request body keys:', Object.keys(req.body));
+
+  const { apiKey, geminiApiKey, model, count, callsPerArticle, generateImages, imageModel, imagePrompt, topics } = req.body;
+
+  log('API', 'Job config:', {
+    model,
+    count,
+    callsPerArticle,
+    generateImages,
+    imageModel,
+    hasApiKey: !!apiKey,
+    hasGeminiApiKey: !!geminiApiKey,
+    hasTopics: !!topics,
+    hasImagePrompt: !!imagePrompt
   });
 
-  // Set SSE headers
+  // Validate required fields
+  if (!apiKey || !model || !count) {
+    log('API', 'Validation failed: missing required fields');
+    return res.status(400).json({ error: 'Missing required fields: apiKey, model, count' });
+  }
+
+  // Check for Gemini API key if using Nano Banana
+  if (generateImages && (imageModel === 'nano-banana-2' || imageModel === 'nano-banana-pro') && !geminiApiKey) {
+    log('API', 'Validation failed: missing Gemini API key for Nano Banana');
+    return res.status(400).json({ error: 'Gemini API key required for Nano Banana image generation' });
+  }
+
+  // Check concurrent job limit
+  const runningCount = getRunningJobCount();
+  if (runningCount >= MAX_CONCURRENT_JOBS) {
+    log('API', `Concurrent job limit reached: ${runningCount}/${MAX_CONCURRENT_JOBS}`);
+    return res.status(429).json({ error: `Maximum ${MAX_CONCURRENT_JOBS} concurrent jobs allowed` });
+  }
+
+  const blogCount = Math.min(Math.max(parseInt(count), 1), 30);
+  const depth = Math.min(Math.max(parseInt(callsPerArticle) || 2, 1), 5);
+
+  // Create job
+  const job = {
+    id: uuidv4(),
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+    completedAt: null,
+    config: {
+      model,
+      count: blogCount,
+      callsPerArticle: depth,
+      generateImages: !!generateImages,
+      imageModel: imageModel || 'dall-e-3',
+      imagePrompt: imagePrompt || '',
+      topics: topics || ''
+    },
+    progress: {
+      current: 0,
+      total: blogCount,
+      message: 'Starting generation...'
+    },
+    results: null,
+    error: null
+  };
+
+  saveJob(job);
+  log('API', `Job created: ${job.id}`);
+
+  // Start background processing
+  log('API', `Scheduling background processing for job: ${job.id}`);
+  setImmediate(() => {
+    log('API', `Background processing started for job: ${job.id}`);
+    processJob(job.id, apiKey, geminiApiKey);
+  });
+
+  res.json({ jobId: job.id, status: 'pending' });
+});
+
+// List all jobs
+app.get('/api/jobs', requireAuth, (req, res) => {
+  log('API', 'GET /api/jobs - Listing all jobs');
+  try {
+    const jobs = listJobs();
+    log('API', `Returning ${jobs.length} jobs`);
+    res.json(jobs);
+  } catch (err) {
+    logError('API', 'Failed to list jobs', err);
+    res.status(500).json({ error: 'Failed to list jobs' });
+  }
+});
+
+// Get single job details
+app.get('/api/jobs/:id', requireAuth, (req, res) => {
+  const jobId = req.params.id;
+  log('API', `GET /api/jobs/${jobId} - Getting job details`);
+  try {
+    const job = loadJob(jobId);
+    if (!job) {
+      log('API', `Job not found: ${jobId}`);
+      return res.status(404).json({ error: 'Job not found' });
+    }
+    log('API', `Returning job: ${jobId}`, { status: job.status, hasResults: !!job.results });
+    res.json(job);
+  } catch (err) {
+    logError('API', `Failed to get job ${jobId}`, err);
+    res.status(500).json({ error: 'Failed to get job' });
+  }
+});
+
+// Get job CSV download
+app.get('/api/jobs/:id/csv', requireAuth, (req, res) => {
+  const jobId = req.params.id;
+  log('API', `GET /api/jobs/${jobId}/csv - Downloading CSV`);
+  try {
+    const job = loadJob(jobId);
+    if (!job) {
+      log('API', `Job not found: ${jobId}`);
+      return res.status(404).json({ error: 'Job not found' });
+    }
+    if (job.status !== 'completed' || !job.results?.csv) {
+      log('API', `Job not ready for CSV download: ${jobId}`, { status: job.status, hasCSV: !!job.results?.csv });
+      return res.status(400).json({ error: 'Job not completed or no CSV available' });
+    }
+
+    log('API', `Sending CSV for job: ${jobId}`, { csvLength: job.results.csv.length });
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=snackbar-blogs-${job.id.slice(0, 8)}.csv`);
+    res.send(job.results.csv);
+  } catch (err) {
+    logError('API', `Failed to download CSV for job ${jobId}`, err);
+    res.status(500).json({ error: 'Failed to download CSV' });
+  }
+});
+
+// Delete job
+app.delete('/api/jobs/:id', requireAuth, (req, res) => {
+  const jobId = req.params.id;
+  log('API', `DELETE /api/jobs/${jobId} - Deleting job`);
+
+  // Check if job is running
+  if (runningJobs.has(jobId)) {
+    log('API', `Cannot delete running job: ${jobId}`);
+    return res.status(400).json({ error: 'Cannot delete a running job' });
+  }
+
+  if (deleteJob(jobId)) {
+    log('API', `Job deleted: ${jobId}`);
+    res.json({ success: true });
+  } else {
+    log('API', `Job not found for deletion: ${jobId}`);
+    res.status(404).json({ error: 'Job not found' });
+  }
+});
+
+// SSE endpoint for live progress on specific job
+app.get('/api/jobs/:id/stream', requireAuth, (req, res) => {
+  const jobId = req.params.id;
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
 
-  const sendEvent = (event, data) => {
-    console.log(`SSE Event: ${event}`, event === 'progress' ? data.message : '(data omitted)');
-    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  const sendEvent = (data) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
 
-  // Handle client disconnect
-  req.on('close', () => {
-    console.log('=== SSE CONNECTION CLOSED BY CLIENT ===');
-  });
-
-  try {
-    if (!apiKey || !model || !count) {
-      sendEvent('error', { error: 'Missing required fields' });
-      return res.end();
+  // Poll job status every second
+  const interval = setInterval(() => {
+    const job = loadJob(jobId);
+    if (!job) {
+      sendEvent({ error: 'Job not found' });
+      clearInterval(interval);
+      res.end();
+      return;
     }
 
-    const blogCount = Math.min(Math.max(parseInt(count), 1), 30);
-    const depth = Math.min(Math.max(parseInt(callsPerArticle) || 2, 1), 5);
-    console.log('=== GENERATION START ===');
-    console.log('Config:', {
-      model,
-      blogCount,
-      depth,
-      shouldGenerateImages,
-      selectedImageModel,
-      hasTopics: !!topics
+    sendEvent({
+      status: job.status,
+      progress: job.progress,
+      error: job.error,
+      completedAt: job.completedAt
     });
 
+    if (job.status === 'completed' || job.status === 'failed') {
+      clearInterval(interval);
+      res.end();
+    }
+  }, 1000);
+
+  req.on('close', () => {
+    clearInterval(interval);
+  });
+});
+
+// ============== Background Job Processing ==============
+
+async function processJob(jobId, apiKey, geminiApiKey) {
+  log('JOB', `=== PROCESS JOB START: ${jobId} ===`);
+
+  const job = loadJob(jobId);
+  if (!job) {
+    logError('JOB', `Job ${jobId} not found for processing`);
+    return;
+  }
+
+  // Mark as running
+  job.status = 'running';
+  job.progress.message = 'Starting generation...';
+  saveJob(job);
+  runningJobs.set(jobId, true);
+  log('JOB', `Job ${jobId} marked as running, added to runningJobs map`);
+
+  const { model, count, callsPerArticle, generateImages, imageModel, imagePrompt, topics } = job.config;
+
+  log('JOB', `Job ${jobId} config:`, { model, count, callsPerArticle, generateImages, imageModel, hasTopics: !!topics });
+
+  try {
     const openai = new OpenAI({ apiKey });
     const blogs = [];
-
-    const totalSteps = blogCount * depth;
-    let currentStep = 0;
-
-    sendEvent('progress', { message: 'Starting generation...', current: 0, total: blogCount });
 
     const systemPrompt = `You are a professional content writer for Snackbar Design (snackbar.design), a specialized UI/UX design agency focused on mobile app growth.
 
@@ -190,13 +598,12 @@ CRITICAL: You must return ONLY valid JSON. No markdown, no code blocks, no expla
 
     const topicContext = topics ? `Focus on these topics: ${topics}` : 'Focus on UI/UX design, mobile app design, app store optimization, conversion optimization, and design systems.';
 
-    // Generate one blog at a time with multiple depth passes
-    for (let blogIndex = 0; blogIndex < blogCount; blogIndex++) {
-      sendEvent('progress', {
-        message: `Creating article ${blogIndex + 1} of ${blogCount}...`,
-        current: blogIndex,
-        total: blogCount
-      });
+    // Generate one blog at a time
+    for (let blogIndex = 0; blogIndex < count; blogIndex++) {
+      // Update progress
+      job.progress.current = blogIndex;
+      job.progress.message = `Creating article ${blogIndex + 1} of ${count}...`;
+      saveJob(job);
 
       let blogData = null;
 
@@ -226,11 +633,10 @@ Return as JSON:
   "content": "<h2>...</h2><p>...</p>..."
 }`;
 
-      console.log(`Article ${blogIndex + 1}: Initial generation...`);
-      const articleStartTime = Date.now();
+      log('JOB', `Job ${jobId} - Article ${blogIndex + 1}/${count}: Initial generation starting...`);
 
       try {
-        const initialStartTime = Date.now();
+        const startTime = Date.now();
         const initialCompletion = await openai.chat.completions.create({
           model: model,
           messages: [
@@ -241,38 +647,29 @@ Return as JSON:
           max_tokens: 4000,
           response_format: { type: "json_object" }
         });
+        const duration = Date.now() - startTime;
 
         const rawResponse = initialCompletion.choices[0].message.content.trim();
-        console.log(`Article ${blogIndex + 1}: Initial API response received (${Date.now() - initialStartTime}ms)`);
-        console.log(`Article ${blogIndex + 1}: Raw response length: ${rawResponse.length} chars`);
+        log('JOB', `Job ${jobId} - Article ${blogIndex + 1}: OpenAI response received in ${duration}ms, length: ${rawResponse.length}`);
 
         blogData = JSON.parse(rawResponse);
-        console.log(`Article ${blogIndex + 1}: Parsed successfully - Title: "${blogData.title}"`);
-        console.log(`Article ${blogIndex + 1}: Initial content length: ${blogData.content?.length || 0} chars`);
-        currentStep++;
-      } catch (err) {
-        console.error(`=== ARTICLE ${blogIndex + 1} INITIAL ERROR ===`);
-        console.error('Error:', err.message);
-        console.error('Stack:', err.stack);
-        if (err.response) {
-          console.error('API Response:', JSON.stringify(err.response.data || err.response, null, 2));
-        }
-        sendEvent('progress', {
-          message: `Article ${blogIndex + 1} failed, skipping...`,
-          current: blogIndex,
-          total: blogCount
+        log('JOB', `Job ${jobId} - Article ${blogIndex + 1}: Parsed successfully - "${blogData.title}"`, {
+          slug: blogData.slug,
+          blurbLength: blogData.blurb?.length,
+          contentLength: blogData.content?.length
         });
+      } catch (err) {
+        logError('JOB', `Job ${jobId} - Article ${blogIndex + 1} initial generation failed`, err);
         continue;
       }
 
       // Additional passes to expand content
-      for (let pass = 1; pass < depth; pass++) {
-        sendEvent('progress', {
-          message: `Expanding article ${blogIndex + 1} (pass ${pass + 1}/${depth})...`,
-          current: blogIndex,
-          total: blogCount
-        });
+      for (let pass = 1; pass < callsPerArticle; pass++) {
+        log('JOB', `Job ${jobId} - Article ${blogIndex + 1}: Expansion pass ${pass + 1}/${callsPerArticle}`);
+        job.progress.message = `Expanding article ${blogIndex + 1} (pass ${pass + 1}/${callsPerArticle})...`;
+        saveJob(job);
 
+        const prevContentLength = blogData.content?.length || 0;
         const expandPrompt = `Here is an existing blog post. Add 2-3 new sections to make it more comprehensive. Maintain the same style and flow.
 
 EXISTING CONTENT:
@@ -290,11 +687,8 @@ Return ONLY the complete updated content (including original + new sections) as 
   "content": "<h2>...</h2><p>... full combined content with new sections ...</p>"
 }`;
 
-        console.log(`Article ${blogIndex + 1}: Expansion pass ${pass + 1}/${depth}...`);
-        const prevContentLength = blogData.content?.length || 0;
-        const expansionStartTime = Date.now();
-
         try {
+          const startTime = Date.now();
           const expandCompletion = await openai.chat.completions.create({
             model: model,
             messages: [
@@ -305,126 +699,84 @@ Return ONLY the complete updated content (including original + new sections) as 
             max_tokens: 6000,
             response_format: { type: "json_object" }
           });
+          const duration = Date.now() - startTime;
 
           const expanded = JSON.parse(expandCompletion.choices[0].message.content.trim());
-          console.log(`Article ${blogIndex + 1}: Expansion ${pass + 1} received (${Date.now() - expansionStartTime}ms)`);
-
           if (expanded.content) {
             blogData.content = expanded.content;
             const newContentLength = blogData.content.length;
-            console.log(`Article ${blogIndex + 1}: Content grew from ${prevContentLength} to ${newContentLength} chars (+${newContentLength - prevContentLength})`);
+            log('JOB', `Job ${jobId} - Article ${blogIndex + 1}: Expansion ${pass + 1} complete in ${duration}ms`, {
+              prevLength: prevContentLength,
+              newLength: newContentLength,
+              growth: newContentLength - prevContentLength
+            });
           } else {
-            console.log(`Article ${blogIndex + 1}: Expansion ${pass + 1} returned no content field`);
+            log('JOB', `Job ${jobId} - Article ${blogIndex + 1}: Expansion ${pass + 1} returned no content`);
           }
-          currentStep++;
         } catch (err) {
-          console.error(`=== ARTICLE ${blogIndex + 1} EXPANSION ${pass + 1} ERROR ===`);
-          console.error('Error:', err.message);
-          console.error('Stack:', err.stack);
-          if (err.response) {
-            console.error('API Response:', JSON.stringify(err.response.data || err.response, null, 2));
-          }
+          logError('JOB', `Job ${jobId} - Article ${blogIndex + 1} expansion ${pass + 1} failed`, err);
         }
       }
 
       // Generate hero image if enabled
-      if (shouldGenerateImages && blogData) {
-        sendEvent('progress', {
-          message: `Creating image for article ${blogIndex + 1}...`,
-          current: blogIndex,
-          total: blogCount
-        });
+      if (generateImages && blogData) {
+        log('JOB', `Job ${jobId} - Article ${blogIndex + 1}: Starting image generation`, { imageModel });
+        job.progress.message = `Creating image for article ${blogIndex + 1}...`;
+        saveJob(job);
 
         try {
-          const imagePrompt = `Modern, minimalist abstract illustration representing "${blogData.title}". Clean geometric shapes, subtle gradients, professional design aesthetic. No text, no logos, no words, no letters. Soft teal and neutral color palette. Suitable as a blog hero image.`;
+          const isNanoBanana = imageModel === 'nano-banana-2' || imageModel === 'nano-banana-pro';
+          const startTime = Date.now();
 
-          console.log(`Article ${blogIndex + 1}: Generating image with ${selectedImageModel}...`);
-
-          // Configure based on model
-          let imageParams = {
-            prompt: imagePrompt,
-            n: 1
-          };
-
-          if (selectedImageModel === 'dall-e-3' || selectedImageModel === 'dall-e-3-hd') {
-            imageParams.model = 'dall-e-3';
-            imageParams.size = '1792x1024';
-            imageParams.quality = selectedImageModel === 'dall-e-3-hd' ? 'hd' : 'standard';
-          } else if (selectedImageModel === 'dall-e-2') {
-            imageParams.model = 'dall-e-2';
-            imageParams.size = '1024x1024';
+          if (isNanoBanana) {
+            // Use Nano Banana (Gemini)
+            log('JOB', `Job ${jobId} - Article ${blogIndex + 1}: Using Nano Banana for image`);
+            const imageBuffer = await generateNanoBananaImage(blogData.title, imagePrompt, imageModel, geminiApiKey);
+            const imageName = `${blogData.slug}-${Date.now()}.png`;
+            const imagePath = path.join(imagesDir, imageName);
+            log('JOB', `Job ${jobId} - Article ${blogIndex + 1}: Writing image to ${imagePath}`);
+            fs.writeFileSync(imagePath, imageBuffer);
+            blogData.image = `/generated-images/${imageName}`;
           } else {
-            // Default to DALL-E 3 for unknown models
-            console.log(`Unknown image model ${selectedImageModel}, falling back to dall-e-3`);
-            imageParams.model = 'dall-e-3';
-            imageParams.size = '1792x1024';
-            imageParams.quality = 'standard';
+            // Use DALL-E
+            log('JOB', `Job ${jobId} - Article ${blogIndex + 1}: Using DALL-E for image`);
+            const imageUrl = await generateDallEImage(openai, blogData.title, imagePrompt, imageModel);
+            const imageName = `${blogData.slug}-${Date.now()}.png`;
+            const imagePath = path.join(imagesDir, imageName);
+            log('JOB', `Job ${jobId} - Article ${blogIndex + 1}: Downloading and saving image to ${imagePath}`);
+            await downloadImage(imageUrl, imagePath);
+            blogData.image = `/generated-images/${imageName}`;
           }
 
-          console.log('Image params:', JSON.stringify(imageParams, null, 2));
-          const imageResponse = await openai.images.generate(imageParams);
-          console.log('Image response received, URL length:', imageResponse.data[0]?.url?.length);
-
-          const imageUrl = imageResponse.data[0].url;
-          const imageName = `${blogData.slug}-${Date.now()}.png`;
-          const imagePath = path.join(imagesDir, imageName);
-
-          await downloadImage(imageUrl, imagePath);
-
-          // Get the host from request headers for the URL
-          const host = req.get('host');
-          const protocol = req.get('x-forwarded-proto') || 'https';
-          blogData.image = `${protocol}://${host}/generated-images/${imageName}`;
-
-          console.log(`Article ${blogIndex + 1}: Image saved to ${imageName}`);
+          const duration = Date.now() - startTime;
+          log('JOB', `Job ${jobId} - Article ${blogIndex + 1}: Image saved in ${duration}ms`, { imagePath: blogData.image });
         } catch (imgErr) {
-          console.error(`=== ARTICLE ${blogIndex + 1} IMAGE ERROR ===`);
-          console.error('Model:', selectedImageModel);
-          console.error('Error:', imgErr.message);
-          console.error('Stack:', imgErr.stack);
-          if (imgErr.response) {
-            console.error('API Response:', JSON.stringify(imgErr.response.data || imgErr.response, null, 2));
-          }
+          logError('JOB', `Job ${jobId} - Article ${blogIndex + 1} image generation failed`, imgErr);
           blogData.image = '';
-          sendEvent('progress', {
-            message: `Image generation failed for article ${blogIndex + 1}, continuing...`,
-            current: blogIndex,
-            total: blogCount
-          });
         }
       } else {
+        log('JOB', `Job ${jobId} - Article ${blogIndex + 1}: Skipping image generation`);
         blogData.image = '';
       }
 
       blogs.push(blogData);
-      const articleTime = ((Date.now() - articleStartTime) / 1000).toFixed(1);
-      console.log(`Article ${blogIndex + 1} complete (${depth} passes) in ${articleTime}s`);
-      console.log(`Article ${blogIndex + 1} final content: ${blogData.content?.length || 0} chars, image: ${blogData.image ? 'yes' : 'no'}`);
-      console.log(`Progress: ${blogs.length}/${blogCount} blogs generated`);
-
-      sendEvent('progress', {
-        message: `Generated ${blogs.length} of ${blogCount} blogs`,
-        current: blogs.length,
-        total: blogCount
+      log('JOB', `Job ${jobId} - Article ${blogIndex + 1}/${count} complete`, {
+        title: blogData.title,
+        contentLength: blogData.content?.length,
+        hasImage: !!blogData.image
       });
     }
 
     if (blogs.length === 0) {
-      sendEvent('error', { error: 'Failed to generate any blog posts. Please try again.' });
-      return res.end();
+      log('JOB', `Job ${jobId}: No blogs generated, throwing error`);
+      throw new Error('Failed to generate any blog posts');
     }
 
-    console.log('=== GENERATION COMPLETE ===');
-    console.log(`Total blogs: ${blogs.length}`);
-    console.log('Blog titles:', blogs.map(b => b.title));
-    console.log('Content lengths:', blogs.map(b => b.content?.length || 0));
-    console.log('Images generated:', blogs.filter(b => b.image).length);
+    log('JOB', `Job ${jobId}: All articles complete, generating CSV`);
 
-    console.log('=== GENERATING CSV ===');
     // Generate CSV
     const today = new Date();
     const dateStr = `${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}/${today.getFullYear()}`;
-
     const csvRows = [['title', 'slug', 'date', 'image', 'blurb', 'content'].join(',')];
 
     for (const blog of blogs) {
@@ -444,30 +796,87 @@ Return ONLY the complete updated content (including original + new sections) as 
     }
 
     const csv = csvRows.join('\n');
-    console.log(`CSV generated: ${csv.length} chars, ${csvRows.length} rows`);
-    console.log('=== SENDING RESPONSE ===');
+    log('JOB', `Job ${jobId}: CSV generated`, { rows: csvRows.length, csvLength: csv.length });
 
-    sendEvent('complete', {
-      success: true,
-      blogs: blogs,
-      csv: csv,
+    // Mark job as completed
+    job.status = 'completed';
+    job.completedAt = new Date().toISOString();
+    job.progress.current = count;
+    job.progress.message = `Generated ${blogs.length} blog posts`;
+    job.results = {
+      blogs,
+      csv,
       count: blogs.length
+    };
+    saveJob(job);
+
+    log('JOB', `=== JOB ${jobId} COMPLETE ===`, {
+      blogsGenerated: blogs.length,
+      withImages: blogs.filter(b => b.image).length,
+      totalContentChars: blogs.reduce((sum, b) => sum + (b.content?.length || 0), 0)
     });
 
-    res.end();
-
   } catch (error) {
-    console.error('=== FATAL GENERATION ERROR ===');
-    console.error('Error:', error.message);
-    console.error('Stack:', error.stack);
-    if (error.response) {
-      console.error('API Response:', JSON.stringify(error.response.data || error.response, null, 2));
-    }
-    sendEvent('error', { error: error.message || 'Failed to generate blogs' });
-    res.end();
+    logError('JOB', `=== JOB ${jobId} FAILED ===`, error);
+
+    job.status = 'failed';
+    job.completedAt = new Date().toISOString();
+    job.error = error.message;
+    saveJob(job);
+    log('JOB', `Job ${jobId} marked as failed`);
+  } finally {
+    runningJobs.delete(jobId);
+    log('JOB', `Job ${jobId} removed from runningJobs map, current running: ${runningJobs.size}`);
   }
+}
+
+// ============== Legacy SSE Endpoint (kept for compatibility) ==============
+
+app.get('/api/generate-stream', requireAuth, async (req, res) => {
+  log('API', 'GET /api/generate-stream - Deprecated endpoint called');
+  res.status(410).json({
+    error: 'This endpoint is deprecated. Please use POST /api/jobs to create generation jobs.'
+  });
 });
 
+// ============== Startup ==============
+
 app.listen(PORT, () => {
-  console.log(`Snackbar Blog Creator running on port ${PORT}`);
+  log('STARTUP', `=== Snackbar Blog Creator Starting ===`);
+  log('STARTUP', `Port: ${PORT}`);
+  log('STARTUP', `Data directory: ${DATA_DIR}`);
+  log('STARTUP', `Images directory: ${imagesDir}`);
+  log('STARTUP', `Max concurrent jobs: ${MAX_CONCURRENT_JOBS}`);
+  log('STARTUP', `Node version: ${process.version}`);
+  log('STARTUP', `Platform: ${process.platform}`);
+  log('STARTUP', `Working directory: ${process.cwd()}`);
+
+  // Check if directories exist
+  log('STARTUP', `Data dir exists: ${fs.existsSync(DATA_DIR)}`);
+  log('STARTUP', `Images dir exists: ${fs.existsSync(imagesDir)}`);
+
+  // Count existing jobs
+  try {
+    const existingJobs = listJobs();
+    const runningCount = existingJobs.filter(j => j.status === 'running' || j.status === 'pending').length;
+    log('STARTUP', `Existing jobs: ${existingJobs.length} (${runningCount} running/pending)`);
+
+    // Mark any "running" jobs as failed (server restart recovery)
+    existingJobs.forEach(jobSummary => {
+      if (jobSummary.status === 'running' || jobSummary.status === 'pending') {
+        const job = loadJob(jobSummary.id);
+        if (job) {
+          log('STARTUP', `Recovering stale job: ${job.id} (was ${job.status})`);
+          job.status = 'failed';
+          job.error = 'Job interrupted by server restart';
+          job.completedAt = new Date().toISOString();
+          saveJob(job);
+        }
+      }
+    });
+  } catch (err) {
+    logError('STARTUP', 'Failed to check existing jobs', err);
+  }
+
+  log('STARTUP', `=== Server ready on port ${PORT} ===`);
 });

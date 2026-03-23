@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:ai.google.dev)",
+      "Bash(cd:*)",
+      "Bash(npm view:*)",
+      "Bash(cd /Users/corbandamukaitis/Desktop/Work\\\\ Projects/snackbar-blog-creator/snackbar-automated-blog-creator:*)",
+      "Bash(node -e \"\nconst { GoogleGenAI } = require\\(''@google/genai''\\);\n\n// Just check object structure - needs API key for actual use\nconst ai = new GoogleGenAI\\({ apiKey: ''test'' }\\);\nconsole.log\\(''AI methods:'', Object.keys\\(ai\\)\\);\nconsole.log\\(''models type:'', typeof ai.models\\);\n\")",
+      "Bash(timeout:*)",
+      "Bash(node:*)"
+    ]
+  }
+}

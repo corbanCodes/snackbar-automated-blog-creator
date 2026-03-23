@@ -25,7 +25,7 @@
       height: auto;
     }
     .main-container {
-      max-width: 720px;
+      max-width: 900px;
       margin: 0 auto;
       padding: 40px 20px;
     }
@@ -42,6 +42,9 @@
       font-weight: 600;
       font-size: 16px;
       border-radius: 12px 12px 0 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
     .card-body {
       padding: 24px;
@@ -78,8 +81,13 @@
     }
     .btn-outline-secondary {
       border-radius: 8px;
-      padding: 14px 28px;
-      font-size: 15px;
+      padding: 10px 20px;
+      font-size: 14px;
+    }
+    .btn-outline-danger {
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 13px;
     }
     .model-option {
       padding: 16px;
@@ -130,47 +138,6 @@
       font-weight: 600;
       color: var(--snackbar-dark);
     }
-    .progress-container {
-      display: none;
-    }
-    .progress-container.active {
-      display: block;
-    }
-    .progress {
-      height: 8px;
-      border-radius: 4px;
-      background: #e9ecef;
-      margin-bottom: 12px;
-    }
-    .progress-bar {
-      background: var(--snackbar-teal);
-      border-radius: 4px;
-    }
-    .progress-text {
-      font-size: 14px;
-      color: #6c757d;
-    }
-    .result-container {
-      display: none;
-    }
-    .result-container.active {
-      display: block;
-    }
-    .blog-preview {
-      background: #f8f9fa;
-      border-radius: 8px;
-      padding: 16px;
-      margin-bottom: 12px;
-    }
-    .blog-preview-title {
-      font-weight: 600;
-      color: var(--snackbar-dark);
-      margin-bottom: 4px;
-    }
-    .blog-preview-blurb {
-      font-size: 13px;
-      color: #6c757d;
-    }
     .btn-logout {
       color: #6c757d;
       text-decoration: none;
@@ -191,6 +158,127 @@
       resize: vertical;
       min-height: 80px;
     }
+
+    /* Job Cards */
+    .job-card {
+      background: white;
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 12px;
+      border: 1px solid #e9ecef;
+      transition: all 0.15s ease;
+    }
+    .job-card:hover {
+      border-color: #dee2e6;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .job-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 8px;
+    }
+    .job-title {
+      font-weight: 600;
+      color: var(--snackbar-dark);
+      font-size: 14px;
+    }
+    .job-meta {
+      font-size: 12px;
+      color: #868e96;
+    }
+    .job-progress {
+      margin-top: 12px;
+    }
+    .progress {
+      height: 6px;
+      border-radius: 3px;
+      background: #e9ecef;
+      margin-bottom: 6px;
+    }
+    .progress-bar {
+      background: var(--snackbar-teal);
+      border-radius: 3px;
+      transition: width 0.3s ease;
+    }
+    .progress-text {
+      font-size: 12px;
+      color: #6c757d;
+    }
+    .job-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .badge-status {
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+    .badge-running {
+      background: rgba(53, 220, 200, 0.15);
+      color: #1a9e8f;
+    }
+    .badge-pending {
+      background: #fff3cd;
+      color: #856404;
+    }
+    .badge-completed {
+      background: #d4edda;
+      color: #155724;
+    }
+    .badge-failed {
+      background: #f8d7da;
+      color: #721c24;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #6c757d;
+    }
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      opacity: 0.5;
+    }
+
+    /* Modal */
+    .modal-content {
+      border: none;
+      border-radius: 16px;
+    }
+    .modal-header {
+      border-bottom: 1px solid #f0f0f0;
+      padding: 20px 24px;
+    }
+    .modal-body {
+      padding: 24px;
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+    .modal-footer {
+      border-top: 1px solid #f0f0f0;
+      padding: 16px 24px;
+    }
+
+    /* New generation button */
+    .btn-new-generation {
+      background: var(--snackbar-teal);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 20px;
+      font-weight: 500;
+      font-size: 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-new-generation:hover {
+      background: #2bc4b2;
+      color: white;
+    }
   </style>
 </head>
 <body>
@@ -204,132 +292,565 @@
   </nav>
 
   <div class="main-container">
-    <div id="formSection">
-      <div class="card">
-        <div class="card-header">API Configuration</div>
-        <div class="card-body">
-          <div class="mb-3">
-            <label for="apiKey" class="form-label">OpenAI API Key</label>
-            <input type="password" class="form-control" id="apiKey" placeholder="sk-...">
-            <div class="form-text">Your API key is not stored and is only used for this session.</div>
-          </div>
+    <!-- Header with New Generation button -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h4 class="mb-0" style="font-weight: 600; color: var(--snackbar-dark);">Blog Generation Jobs</h4>
+      <button class="btn-new-generation" data-bs-toggle="modal" data-bs-target="#newJobModal">
+        <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        New Generation
+      </button>
+    </div>
+
+    <!-- Active Jobs Section -->
+    <div class="card">
+      <div class="card-header">
+        Active Jobs
+        <span class="badge bg-secondary" id="activeJobCount">0</span>
+      </div>
+      <div class="card-body" id="activeJobsContainer">
+        <div class="empty-state" id="noActiveJobs">
+          <div class="empty-state-icon">&#9881;</div>
+          <p class="mb-0">No active jobs. Click "New Generation" to start.</p>
         </div>
       </div>
+    </div>
 
-      <div class="card">
-        <div class="card-header">Select Model</div>
-        <div class="card-body" id="modelContainer">
-          <label class="model-option selected">
-            <input type="radio" name="model" value="gpt-4o-mini" checked>
-            <div class="model-name">GPT-4o Mini</div>
-            <div class="model-desc">Great balance of quality and cost</div>
-            <div class="model-price">$0.15 / 1M input tokens, $0.60 / 1M output tokens</div>
-          </label>
-          <label class="model-option">
-            <input type="radio" name="model" value="gpt-4o">
-            <div class="model-name">GPT-4o</div>
-            <div class="model-desc">Best quality, higher cost</div>
-            <div class="model-price">$2.50 / 1M input tokens, $10.00 / 1M output tokens</div>
-          </label>
-          <label class="model-option">
-            <input type="radio" name="model" value="gpt-4-turbo">
-            <div class="model-name">GPT-4 Turbo</div>
-            <div class="model-desc">High quality, premium pricing</div>
-            <div class="model-price">$10.00 / 1M input tokens, $30.00 / 1M output tokens</div>
-          </label>
-          <label class="model-option">
-            <input type="radio" name="model" value="gpt-3.5-turbo">
-            <div class="model-name">GPT-3.5 Turbo</div>
-            <div class="model-desc">Fastest, most economical</div>
-            <div class="model-price">$0.50 / 1M input tokens, $1.50 / 1M output tokens</div>
-          </label>
+    <!-- Completed Jobs Section -->
+    <div class="card">
+      <div class="card-header">
+        Job History
+        <span class="badge bg-secondary" id="completedJobCount">0</span>
+      </div>
+      <div class="card-body" id="completedJobsContainer">
+        <div class="empty-state" id="noCompletedJobs">
+          <div class="empty-state-icon">&#128203;</div>
+          <p class="mb-0">No completed jobs yet.</p>
         </div>
       </div>
+    </div>
+  </div>
 
-      <div class="card">
-        <div class="card-header">Generation Settings</div>
-        <div class="card-body">
-          <div class="mb-3">
-            <label for="blogCount" class="form-label">Number of Blog Posts</label>
-            <input type="number" class="form-control" id="blogCount" value="10" min="1" max="30">
-            <div class="form-text">Generate 1-30 blog posts.</div>
-          </div>
-          <div class="mb-3">
-            <label for="callsPerArticle" class="form-label">Depth (API calls per article)</label>
-            <input type="number" class="form-control" id="callsPerArticle" value="2" min="1" max="5">
-            <div class="form-text">More calls = longer, more detailed articles. Recommended: 2-3 for standard, 4-5 for in-depth.</div>
-          </div>
-          <div class="mb-3">
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" id="generateImages">
-              <label class="form-check-label" for="generateImages">Generate hero images</label>
+  <!-- New Job Modal -->
+  <div class="modal fade" id="newJobModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" style="font-weight: 600;">New Blog Generation</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div id="modalError" class="alert alert-danger d-none mb-3"></div>
+
+          <!-- API Keys -->
+          <div class="mb-4">
+            <h6 class="mb-3" style="font-weight: 600;">API Configuration</h6>
+            <div class="mb-3">
+              <label for="apiKey" class="form-label">OpenAI API Key</label>
+              <input type="password" class="form-control" id="apiKey" placeholder="sk-...">
+              <div class="form-text">Required for text generation. Your key is not stored.</div>
             </div>
-            <div class="form-text">Creates modern, abstract hero images for each article.</div>
-          </div>
-          <div class="mb-3" id="imageModelContainer" style="display: none;">
-            <label for="imageModel" class="form-label">Image Model</label>
-            <select class="form-select" id="imageModel">
-              <option value="dall-e-3" selected>DALL-E 3 - Best quality ($0.04/image)</option>
-              <option value="dall-e-3-hd">DALL-E 3 HD - Highest quality ($0.08/image)</option>
-              <option value="dall-e-2">DALL-E 2 - Budget option ($0.02/image)</option>
-            </select>
-          </div>
-          <div class="mb-3">
-            <label for="topics" class="form-label">Topics (optional)</label>
-            <textarea class="form-control" id="topics" placeholder="e.g., App store optimization, paywall design, onboarding flows..."></textarea>
-            <div class="form-text">Leave blank for default UI/UX design topics.</div>
+            <div class="mb-3" id="geminiKeyContainer" style="display: none;">
+              <label for="geminiApiKey" class="form-label">Gemini API Key</label>
+              <input type="password" class="form-control" id="geminiApiKey" placeholder="AIza...">
+              <div class="form-text">Required for Nano Banana images. Get one at <a href="https://ai.google.dev" target="_blank">ai.google.dev</a></div>
+            </div>
           </div>
 
+          <!-- Model Selection -->
+          <div class="mb-4">
+            <h6 class="mb-3" style="font-weight: 600;">Text Model</h6>
+            <div id="modelContainer">
+              <label class="model-option selected">
+                <input type="radio" name="model" value="gpt-4o-mini" checked>
+                <div class="model-name">GPT-4o Mini</div>
+                <div class="model-desc">Great balance of quality and cost</div>
+                <div class="model-price">$0.15 / 1M input, $0.60 / 1M output</div>
+              </label>
+              <label class="model-option">
+                <input type="radio" name="model" value="gpt-4o">
+                <div class="model-name">GPT-4o</div>
+                <div class="model-desc">Best quality, higher cost</div>
+                <div class="model-price">$2.50 / 1M input, $10.00 / 1M output</div>
+              </label>
+              <label class="model-option">
+                <input type="radio" name="model" value="gpt-4-turbo">
+                <div class="model-name">GPT-4 Turbo</div>
+                <div class="model-desc">High quality, premium pricing</div>
+                <div class="model-price">$10.00 / 1M input, $30.00 / 1M output</div>
+              </label>
+              <label class="model-option">
+                <input type="radio" name="model" value="gpt-3.5-turbo">
+                <div class="model-name">GPT-3.5 Turbo</div>
+                <div class="model-desc">Fastest, most economical</div>
+                <div class="model-price">$0.50 / 1M input, $1.50 / 1M output</div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Generation Settings -->
+          <div class="mb-4">
+            <h6 class="mb-3" style="font-weight: 600;">Generation Settings</h6>
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <label for="blogCount" class="form-label">Number of Blog Posts</label>
+                <input type="number" class="form-control" id="blogCount" value="10" min="1" max="30">
+                <div class="form-text">Generate 1-30 posts per job</div>
+              </div>
+              <div class="col-md-6 mb-3">
+                <label for="callsPerArticle" class="form-label">Depth (passes per article)</label>
+                <input type="number" class="form-control" id="callsPerArticle" value="2" min="1" max="5">
+                <div class="form-text">More passes = longer articles</div>
+              </div>
+            </div>
+            <div class="mb-3">
+              <label for="topics" class="form-label">Topics (optional)</label>
+              <textarea class="form-control" id="topics" placeholder="e.g., App store optimization, paywall design, onboarding flows..."></textarea>
+              <div class="form-text">Leave blank for default UI/UX topics</div>
+            </div>
+          </div>
+
+          <!-- Image Settings -->
+          <div class="mb-4">
+            <h6 class="mb-3" style="font-weight: 600;">Image Generation</h6>
+            <div class="mb-3">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="generateImages">
+                <label class="form-check-label" for="generateImages">Generate hero images</label>
+              </div>
+            </div>
+            <div id="imageSettingsContainer" style="display: none;">
+              <div class="mb-3">
+                <label for="imageModel" class="form-label">Image Model</label>
+                <select class="form-select" id="imageModel">
+                  <option value="dall-e-3">DALL-E 3 ($0.04/image)</option>
+                  <option value="dall-e-3-hd">DALL-E 3 HD ($0.08/image)</option>
+                  <option value="dall-e-2">DALL-E 2 ($0.02/image)</option>
+                  <option value="nano-banana-2">Nano Banana 2 ($0.013/image)</option>
+                  <option value="nano-banana-pro">Nano Banana Pro ($0.013/image)</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label for="imagePrompt" class="form-label">Image Style Prompt (optional)</label>
+                <textarea class="form-control" id="imagePrompt" rows="2" placeholder="e.g., cyberpunk aesthetic, neon colors, watercolor style..."></textarea>
+                <div class="form-text">Additional styling instructions for all images</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cost Estimate -->
           <div class="cost-estimate">
             <div class="cost-estimate-label">Estimated Cost</div>
             <div class="cost-estimate-value" id="costEstimate">~$0.02</div>
           </div>
         </div>
-      </div>
-
-      <div id="errorAlert" class="alert alert-danger d-none"></div>
-
-      <button class="btn btn-primary w-100" id="generateBtn">Generate Blog Posts</button>
-    </div>
-
-    <div class="progress-container" id="progressSection">
-      <div class="card">
-        <div class="card-body">
-          <div class="progress">
-            <div class="progress-bar" id="progressBar" style="width: 0%"></div>
-          </div>
-          <div class="progress-text" id="progressText">Generating blogs...</div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" id="createJobBtn">Start Generation</button>
         </div>
-      </div>
-    </div>
-
-    <div class="result-container" id="resultSection">
-      <div class="card">
-        <div class="card-header">Generated Blog Posts</div>
-        <div class="card-body">
-          <div id="blogPreviews"></div>
-        </div>
-      </div>
-
-      <div class="d-flex gap-3">
-        <button class="btn btn-primary flex-grow-1" id="downloadBtn">Download CSV</button>
-        <button class="btn btn-outline-secondary" id="resetBtn">Generate More</button>
       </div>
     </div>
   </div>
 
+  <!-- Job Details Modal -->
+  <div class="modal fade" id="jobDetailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" style="font-weight: 600;">Job Details</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" id="jobDetailsBody">
+          Loading...
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+          <button type="button" class="btn btn-primary" id="downloadJobCsvBtn" style="display: none;">Download CSV</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
   <script>
+    // ============== Debug Logging ==============
+    const DEBUG = true;
+    function log(category, message, data = null) {
+      if (!DEBUG) return;
+      const timestamp = new Date().toISOString().split('T')[1].slice(0, 12);
+      if (data) {
+        console.log(`[${timestamp}] [${category}]`, message, data);
+      } else {
+        console.log(`[${timestamp}] [${category}]`, message);
+      }
+    }
+
+    // Constants
     const MODEL_COSTS = {
       'gpt-4o': { input: 2.50, output: 10.00 },
       'gpt-4o-mini': { input: 0.15, output: 0.60 },
       'gpt-4-turbo': { input: 10.00, output: 30.00 },
       'gpt-3.5-turbo': { input: 0.50, output: 1.50 }
     };
-
-    // Estimated tokens per blog: ~500 input, ~2000 output
+    const IMAGE_COSTS = {
+      'dall-e-3': 0.04,
+      'dall-e-3-hd': 0.08,
+      'dall-e-2': 0.02,
+      'nano-banana-2': 0.013,
+      'nano-banana-pro': 0.013
+    };
     const TOKENS_PER_BLOG = { input: 500, output: 2000 };
 
-    let generatedCSV = null;
+    // State
+    let pollingInterval = null;
+    let currentJobId = null;
+    let pollCount = 0;
+
+    log('INIT', 'Frontend loaded');
+
+    // ============== Job Polling ==============
+
+    async function loadJobs() {
+      pollCount++;
+      log('POLL', `Loading jobs (poll #${pollCount})`);
+      try {
+        const startTime = Date.now();
+        const response = await fetch('/api/jobs');
+        const duration = Date.now() - startTime;
+
+        if (!response.ok) {
+          log('POLL', `Failed to load jobs: ${response.status} ${response.statusText}`);
+          throw new Error('Failed to load jobs');
+        }
+
+        const jobs = await response.json();
+        log('POLL', `Loaded ${jobs.length} jobs in ${duration}ms`, {
+          active: jobs.filter(j => j.status === 'running' || j.status === 'pending').length,
+          completed: jobs.filter(j => j.status === 'completed').length,
+          failed: jobs.filter(j => j.status === 'failed').length
+        });
+        renderJobs(jobs);
+      } catch (err) {
+        log('POLL', `Error loading jobs: ${err.message}`);
+        console.error('Error loading jobs:', err);
+      }
+    }
+
+    function renderJobs(jobs) {
+      const activeJobs = jobs.filter(j => j.status === 'running' || j.status === 'pending');
+      const completedJobs = jobs.filter(j => j.status === 'completed' || j.status === 'failed');
+      log('RENDER', `Rendering ${activeJobs.length} active, ${completedJobs.length} completed jobs`);
+
+      // Update counts
+      document.getElementById('activeJobCount').textContent = activeJobs.length;
+      document.getElementById('completedJobCount').textContent = completedJobs.length;
+
+      // Render active jobs
+      const activeContainer = document.getElementById('activeJobsContainer');
+      const noActiveMsg = document.getElementById('noActiveJobs');
+
+      if (activeJobs.length === 0) {
+        noActiveMsg.style.display = 'block';
+        activeContainer.querySelectorAll('.job-card').forEach(el => el.remove());
+      } else {
+        noActiveMsg.style.display = 'none';
+        activeContainer.innerHTML = activeJobs.map(job => renderJobCard(job)).join('');
+      }
+
+      // Render completed jobs
+      const completedContainer = document.getElementById('completedJobsContainer');
+      const noCompletedMsg = document.getElementById('noCompletedJobs');
+
+      if (completedJobs.length === 0) {
+        noCompletedMsg.style.display = 'block';
+        completedContainer.querySelectorAll('.job-card').forEach(el => el.remove());
+      } else {
+        noCompletedMsg.style.display = 'none';
+        completedContainer.innerHTML = completedJobs.map(job => renderJobCard(job)).join('');
+      }
+    }
+
+    function renderJobCard(job) {
+      const statusBadge = {
+        pending: '<span class="badge-status badge-pending">Pending</span>',
+        running: '<span class="badge-status badge-running">Running</span>',
+        completed: '<span class="badge-status badge-completed">Completed</span>',
+        failed: '<span class="badge-status badge-failed">Failed</span>'
+      }[job.status];
+
+      const timeAgo = getTimeAgo(job.status === 'completed' || job.status === 'failed' ? job.completedAt : job.createdAt);
+      const isActive = job.status === 'running' || job.status === 'pending';
+      const progressPercent = job.progress.total > 0 ? (job.progress.current / job.progress.total) * 100 : 0;
+
+      let progressHtml = '';
+      if (isActive) {
+        progressHtml = `
+          <div class="job-progress">
+            <div class="progress">
+              <div class="progress-bar" style="width: ${Math.max(progressPercent, 3)}%"></div>
+            </div>
+            <div class="progress-text">${job.progress.message}</div>
+          </div>
+        `;
+      }
+
+      let actionsHtml = '';
+      if (job.status === 'completed') {
+        actionsHtml = `
+          <div class="job-actions">
+            <button class="btn btn-sm btn-outline-secondary" onclick="viewJobDetails('${job.id}')">View Details</button>
+            <button class="btn btn-sm btn-primary" onclick="downloadJobCsv('${job.id}')">Download CSV</button>
+            <button class="btn btn-sm btn-outline-danger" onclick="deleteJob('${job.id}')">Delete</button>
+          </div>
+        `;
+      } else if (job.status === 'failed') {
+        actionsHtml = `
+          <div class="job-actions">
+            <button class="btn btn-sm btn-outline-secondary" onclick="viewJobDetails('${job.id}')">View Error</button>
+            <button class="btn btn-sm btn-outline-danger" onclick="deleteJob('${job.id}')">Delete</button>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="job-card" data-job-id="${job.id}">
+          <div class="job-header">
+            <div>
+              <div class="job-title">${job.config.count} posts with ${job.config.model}</div>
+              <div class="job-meta">${job.config.generateImages ? 'With images' : 'No images'} &bull; ${timeAgo}</div>
+            </div>
+            ${statusBadge}
+          </div>
+          ${progressHtml}
+          ${job.error ? `<div class="alert alert-danger mt-2 mb-0 py-2 px-3" style="font-size: 13px;">${job.error}</div>` : ''}
+          ${actionsHtml}
+        </div>
+      `;
+    }
+
+    function getTimeAgo(dateStr) {
+      if (!dateStr) return '';
+      const date = new Date(dateStr);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffSec = Math.floor(diffMs / 1000);
+      const diffMin = Math.floor(diffSec / 60);
+      const diffHour = Math.floor(diffMin / 60);
+      const diffDay = Math.floor(diffHour / 24);
+
+      if (diffSec < 60) return 'Just now';
+      if (diffMin < 60) return `${diffMin} min ago`;
+      if (diffHour < 24) return `${diffHour} hour${diffHour > 1 ? 's' : ''} ago`;
+      return `${diffDay} day${diffDay > 1 ? 's' : ''} ago`;
+    }
+
+    // Start polling
+    function startPolling() {
+      log('POLL', 'Starting polling (every 2s)');
+      pollCount = 0;
+      loadJobs();
+      pollingInterval = setInterval(loadJobs, 2000);
+    }
+
+    function stopPolling() {
+      if (pollingInterval) {
+        log('POLL', `Stopping polling after ${pollCount} polls`);
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+      }
+    }
+
+    // ============== Job Actions ==============
+
+    async function viewJobDetails(jobId) {
+      log('ACTION', `Viewing job details: ${jobId}`);
+      currentJobId = jobId;
+      const modal = new bootstrap.Modal(document.getElementById('jobDetailsModal'));
+      const body = document.getElementById('jobDetailsBody');
+      const downloadBtn = document.getElementById('downloadJobCsvBtn');
+
+      body.innerHTML = '<div class="text-center py-4">Loading...</div>';
+      downloadBtn.style.display = 'none';
+      modal.show();
+
+      try {
+        const startTime = Date.now();
+        const response = await fetch(`/api/jobs/${jobId}`);
+        const duration = Date.now() - startTime;
+        log('ACTION', `Job details loaded in ${duration}ms`);
+
+        if (!response.ok) throw new Error('Failed to load job');
+        const job = await response.json();
+        log('ACTION', `Job details:`, { status: job.status, hasResults: !!job.results, error: job.error });
+
+        if (job.status === 'completed' && job.results?.blogs) {
+          downloadBtn.style.display = 'block';
+          body.innerHTML = `
+            <div class="mb-3">
+              <strong>Status:</strong> Completed<br>
+              <strong>Generated:</strong> ${job.results.count} blog posts<br>
+              <strong>Model:</strong> ${job.config.model}<br>
+              <strong>Created:</strong> ${new Date(job.createdAt).toLocaleString()}<br>
+              <strong>Completed:</strong> ${new Date(job.completedAt).toLocaleString()}
+            </div>
+            <h6 class="mb-3">Generated Articles:</h6>
+            ${job.results.blogs.map(blog => `
+              <div class="p-3 mb-2 bg-light rounded">
+                <div style="font-weight: 600; margin-bottom: 4px;">${blog.title}</div>
+                <div style="font-size: 13px; color: #6c757d;">${blog.blurb}</div>
+                ${blog.image ? `<img src="${blog.image}" alt="" style="max-width: 100%; height: auto; margin-top: 8px; border-radius: 4px;">` : ''}
+              </div>
+            `).join('')}
+          `;
+        } else if (job.status === 'failed') {
+          body.innerHTML = `
+            <div class="alert alert-danger">
+              <strong>Job Failed</strong><br>
+              ${job.error || 'Unknown error'}
+            </div>
+            <div class="mt-3">
+              <strong>Model:</strong> ${job.config.model}<br>
+              <strong>Requested:</strong> ${job.config.count} posts<br>
+              <strong>Created:</strong> ${new Date(job.createdAt).toLocaleString()}
+            </div>
+          `;
+        } else {
+          body.innerHTML = `
+            <div class="text-center py-4">
+              <div class="spinner-border text-primary mb-3"></div>
+              <p>Job is still running...</p>
+            </div>
+          `;
+        }
+      } catch (err) {
+        body.innerHTML = `<div class="alert alert-danger">Error loading job details: ${err.message}</div>`;
+      }
+    }
+
+    async function downloadJobCsv(jobId) {
+      log('ACTION', `Downloading CSV for job: ${jobId}`);
+      window.location.href = `/api/jobs/${jobId}/csv`;
+    }
+
+    document.getElementById('downloadJobCsvBtn').addEventListener('click', () => {
+      if (currentJobId) {
+        downloadJobCsv(currentJobId);
+      }
+    });
+
+    async function deleteJob(jobId) {
+      log('ACTION', `Delete requested for job: ${jobId}`);
+      if (!confirm('Are you sure you want to delete this job?')) {
+        log('ACTION', 'Delete cancelled by user');
+        return;
+      }
+
+      try {
+        log('ACTION', `Sending DELETE /api/jobs/${jobId}`);
+        const response = await fetch(`/api/jobs/${jobId}`, { method: 'DELETE' });
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || 'Failed to delete job');
+        }
+        log('ACTION', `Job deleted: ${jobId}`);
+        loadJobs();
+      } catch (err) {
+        log('ACTION', `Delete failed: ${err.message}`);
+        alert('Error deleting job: ' + err.message);
+      }
+    }
+
+    // ============== Create New Job ==============
+
+    async function createJob() {
+      log('ACTION', 'Creating new job');
+
+      const apiKey = document.getElementById('apiKey').value.trim();
+      const geminiApiKey = document.getElementById('geminiApiKey').value.trim();
+      const model = document.querySelector('input[name="model"]:checked').value;
+      const count = parseInt(document.getElementById('blogCount').value) || 10;
+      const callsPerArticle = parseInt(document.getElementById('callsPerArticle').value) || 2;
+      const generateImages = document.getElementById('generateImages').checked;
+      const imageModel = document.getElementById('imageModel').value;
+      const imagePrompt = document.getElementById('imagePrompt').value.trim();
+      const topics = document.getElementById('topics').value.trim();
+      const errorAlert = document.getElementById('modalError');
+      const createBtn = document.getElementById('createJobBtn');
+
+      log('ACTION', 'Job config:', {
+        model, count, callsPerArticle, generateImages, imageModel,
+        hasApiKey: !!apiKey, hasGeminiKey: !!geminiApiKey,
+        hasTopics: !!topics, hasImagePrompt: !!imagePrompt
+      });
+
+      // Validation
+      if (!apiKey) {
+        log('ACTION', 'Validation failed: no API key');
+        errorAlert.textContent = 'Please enter your OpenAI API key.';
+        errorAlert.classList.remove('d-none');
+        return;
+      }
+
+      const isNanoBanana = imageModel === 'nano-banana-2' || imageModel === 'nano-banana-pro';
+      if (generateImages && isNanoBanana && !geminiApiKey) {
+        log('ACTION', 'Validation failed: no Gemini key for Nano Banana');
+        errorAlert.textContent = 'Please enter your Gemini API key for Nano Banana images.';
+        errorAlert.classList.remove('d-none');
+        return;
+      }
+
+      errorAlert.classList.add('d-none');
+      createBtn.disabled = true;
+      createBtn.textContent = 'Creating...';
+
+      try {
+        log('ACTION', 'Sending POST /api/jobs request');
+        const startTime = Date.now();
+
+        const response = await fetch('/api/jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            apiKey,
+            geminiApiKey: isNanoBanana ? geminiApiKey : undefined,
+            model,
+            count,
+            callsPerArticle,
+            generateImages,
+            imageModel,
+            imagePrompt,
+            topics
+          })
+        });
+
+        const duration = Date.now() - startTime;
+        const data = await response.json();
+        log('ACTION', `Response received in ${duration}ms:`, { status: response.status, data });
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to create job');
+        }
+
+        log('ACTION', `Job created successfully: ${data.jobId}`);
+
+        // Close modal and refresh jobs
+        bootstrap.Modal.getInstance(document.getElementById('newJobModal')).hide();
+        loadJobs();
+
+      } catch (err) {
+        log('ACTION', `Job creation failed: ${err.message}`);
+        errorAlert.textContent = err.message;
+        errorAlert.classList.remove('d-none');
+      } finally {
+        createBtn.disabled = false;
+        createBtn.textContent = 'Start Generation';
+      }
+    }
+
+    document.getElementById('createJobBtn').addEventListener('click', createJob);
+
+    // ============== Form Interactions ==============
 
     // Model selection
     document.querySelectorAll('.model-option').forEach(option => {
@@ -341,13 +862,27 @@
       });
     });
 
-    // Cost estimate
-    const IMAGE_COSTS = {
-      'dall-e-3': 0.04,
-      'dall-e-3-hd': 0.08,
-      'dall-e-2': 0.02
-    };
+    // Image toggle
+    document.getElementById('generateImages').addEventListener('change', (e) => {
+      document.getElementById('imageSettingsContainer').style.display = e.target.checked ? 'block' : 'none';
+      updateCostEstimate();
+      updateGeminiKeyVisibility();
+    });
 
+    // Image model change
+    document.getElementById('imageModel').addEventListener('change', () => {
+      updateCostEstimate();
+      updateGeminiKeyVisibility();
+    });
+
+    function updateGeminiKeyVisibility() {
+      const generateImages = document.getElementById('generateImages').checked;
+      const imageModel = document.getElementById('imageModel').value;
+      const isNanoBanana = imageModel === 'nano-banana-2' || imageModel === 'nano-banana-pro';
+      document.getElementById('geminiKeyContainer').style.display = (generateImages && isNanoBanana) ? 'block' : 'none';
+    }
+
+    // Cost estimate
     function updateCostEstimate() {
       const model = document.querySelector('input[name="model"]:checked').value;
       const count = parseInt(document.getElementById('blogCount').value) || 10;
@@ -359,22 +894,14 @@
       const totalCalls = count * callsPerArticle;
       const inputCost = (TOKENS_PER_BLOG.input * totalCalls / 1000000) * costs.input;
       const outputCost = (TOKENS_PER_BLOG.output * totalCalls / 1000000) * costs.output;
-      const imageCost = generateImages ? count * IMAGE_COSTS[imageModel] : 0;
+      const imageCost = generateImages ? count * (IMAGE_COSTS[imageModel] || 0.04) : 0;
       const totalCost = inputCost + outputCost + imageCost;
 
       document.getElementById('costEstimate').textContent = `~$${totalCost.toFixed(2)}`;
     }
 
-    // Show/hide image model selector
-    document.getElementById('generateImages').addEventListener('change', (e) => {
-      document.getElementById('imageModelContainer').style.display = e.target.checked ? 'block' : 'none';
-      updateCostEstimate();
-    });
-
     document.getElementById('blogCount').addEventListener('input', updateCostEstimate);
     document.getElementById('callsPerArticle').addEventListener('input', updateCostEstimate);
-    document.getElementById('imageModel').addEventListener('change', updateCostEstimate);
-    updateCostEstimate();
 
     // Logout
     document.getElementById('logoutBtn').addEventListener('click', async (e) => {
@@ -383,119 +910,39 @@
       window.location.href = '/login';
     });
 
-    // Generate
-    document.getElementById('generateBtn').addEventListener('click', () => {
-      const apiKey = document.getElementById('apiKey').value.trim();
-      const model = document.querySelector('input[name="model"]:checked').value;
-      const count = parseInt(document.getElementById('blogCount').value) || 10;
-      const callsPerArticle = parseInt(document.getElementById('callsPerArticle').value) || 2;
-      const generateImages = document.getElementById('generateImages').checked;
-      const imageModel = document.getElementById('imageModel').value;
-      const topics = document.getElementById('topics').value.trim();
-      const errorAlert = document.getElementById('errorAlert');
-      const generateBtn = document.getElementById('generateBtn');
+    // ============== Initialize ==============
 
-      if (!apiKey) {
-        errorAlert.textContent = 'Please enter your OpenAI API key.';
-        errorAlert.classList.remove('d-none');
-        return;
+    log('INIT', 'Initializing application');
+    log('INIT', `User agent: ${navigator.userAgent}`);
+    log('INIT', `Window size: ${window.innerWidth}x${window.innerHeight}`);
+
+    updateCostEstimate();
+    startPolling();
+
+    // Stop polling when page is hidden, resume when visible
+    document.addEventListener('visibilitychange', () => {
+      log('VISIBILITY', `Page visibility changed: ${document.hidden ? 'hidden' : 'visible'}`);
+      if (document.hidden) {
+        stopPolling();
+      } else {
+        startPolling();
       }
-
-      errorAlert.classList.add('d-none');
-      generateBtn.disabled = true;
-      document.getElementById('formSection').style.display = 'none';
-      document.getElementById('progressSection').classList.add('active');
-
-      const progressBar = document.getElementById('progressBar');
-      const progressText = document.getElementById('progressText');
-
-      // Build query string for SSE
-      const params = new URLSearchParams({
-        apiKey,
-        model,
-        count: count.toString(),
-        callsPerArticle: callsPerArticle.toString(),
-        generateImages: generateImages.toString(),
-        imageModel,
-        topics
-      });
-
-      const eventSource = new EventSource(`/api/generate-stream?${params}`);
-
-      eventSource.addEventListener('progress', (e) => {
-        const data = JSON.parse(e.data);
-        const percent = data.total > 0 ? (data.current / data.total) * 100 : 0;
-        progressBar.style.width = `${Math.max(percent, 5)}%`;
-        progressText.textContent = data.message;
-      });
-
-      eventSource.addEventListener('complete', (e) => {
-        const data = JSON.parse(e.data);
-        eventSource.close();
-        generateBtn.disabled = false;
-        generatedCSV = data.csv;
-
-        progressBar.style.width = '100%';
-        progressText.textContent = `Generated ${data.count} blog posts`;
-
-        setTimeout(() => {
-          document.getElementById('progressSection').classList.remove('active');
-          document.getElementById('resultSection').classList.add('active');
-
-          const previews = document.getElementById('blogPreviews');
-          previews.innerHTML = data.blogs.map(blog => `
-            <div class="blog-preview">
-              <div class="blog-preview-title">${blog.title}</div>
-              <div class="blog-preview-blurb">${blog.blurb}</div>
-            </div>
-          `).join('');
-        }, 500);
-      });
-
-      eventSource.addEventListener('error', (e) => {
-        let errorMsg = 'Connection error. Please try again.';
-        try {
-          const data = JSON.parse(e.data);
-          errorMsg = data.error || errorMsg;
-        } catch {}
-        eventSource.close();
-        generateBtn.disabled = false;
-        document.getElementById('progressSection').classList.remove('active');
-        document.getElementById('formSection').style.display = 'block';
-        errorAlert.textContent = errorMsg;
-        errorAlert.classList.remove('d-none');
-      });
-
-      eventSource.onerror = () => {
-        eventSource.close();
-        generateBtn.disabled = false;
-        document.getElementById('progressSection').classList.remove('active');
-        document.getElementById('formSection').style.display = 'block';
-        errorAlert.textContent = 'Connection lost. Please try again.';
-        errorAlert.classList.remove('d-none');
-      };
     });
 
-    // Download CSV
-    document.getElementById('downloadBtn').addEventListener('click', () => {
-      if (!generatedCSV) return;
-
-      const blob = new Blob([generatedCSV], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `snackbar-blogs-${new Date().toISOString().split('T')[0]}.csv`;
-      link.click();
-      URL.revokeObjectURL(url);
+    // Log any unhandled errors
+    window.addEventListener('error', (event) => {
+      log('ERROR', `Unhandled error: ${event.message}`, {
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno
+      });
     });
 
-    // Reset
-    document.getElementById('resetBtn').addEventListener('click', () => {
-      document.getElementById('resultSection').classList.remove('active');
-      document.getElementById('formSection').style.display = 'block';
-      document.getElementById('progressBar').style.width = '0%';
-      generatedCSV = null;
+    window.addEventListener('unhandledrejection', (event) => {
+      log('ERROR', `Unhandled promise rejection: ${event.reason}`);
     });
+
+    log('INIT', 'Application initialized');
   </script>
 </body>
 </html>
