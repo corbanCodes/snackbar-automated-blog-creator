@@ -39,6 +39,9 @@ function logError(category, message, error) {
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'password';
 
+// Public URL for generating full image URLs (e.g., https://yourdomain.com)
+const PUBLIC_URL = process.env.PUBLIC_URL || '';
+
 // Job storage configuration
 const DATA_DIR = path.join(__dirname, 'data', 'jobs');
 const MAX_CONCURRENT_JOBS = 5;
@@ -818,7 +821,8 @@ Return ONLY the complete updated content (including original + new sections) as 
       const escapedContent = `"${blog.content.replace(/"/g, '""')}"`;
       const escapedBlurb = `"${blog.blurb.replace(/"/g, '""')}"`;
       const escapedTitle = `"${blog.title.replace(/"/g, '""')}"`;
-      const imageUrl = blog.image || '';
+      // Prepend PUBLIC_URL to make full image URLs for spreadsheet compatibility
+      const imageUrl = blog.image ? `${PUBLIC_URL}${blog.image}` : '';
 
       csvRows.push([
         escapedTitle,
@@ -879,6 +883,7 @@ app.get('/api/generate-stream', requireAuth, async (req, res) => {
 app.listen(PORT, () => {
   log('STARTUP', `=== Snackbar Blog Creator Starting ===`);
   log('STARTUP', `Port: ${PORT}`);
+  log('STARTUP', `Public URL: ${PUBLIC_URL || '(not set - image URLs will be relative)'}`);
   log('STARTUP', `Data directory: ${DATA_DIR}`);
   log('STARTUP', `Images directory: ${imagesDir}`);
   log('STARTUP', `Max concurrent jobs: ${MAX_CONCURRENT_JOBS}`);
