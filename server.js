@@ -310,10 +310,10 @@ async function generateNanoBananaImage(title, customPrompt, imageModel, geminiAp
 
     const prompt = `Modern, minimalist abstract illustration representing "${title}". Clean geometric shapes, subtle gradients, professional design aesthetic. No text, no logos, no words, no letters. Soft teal and neutral color palette. ${customPrompt || ''}`;
 
-    // Use Imagen 3 for image generation
+    // Use Imagen 4 for image generation (Imagen 3.0-001 was discontinued)
     const modelName = imageModel === 'nano-banana-pro'
-      ? 'imagen-3.0-generate-002'
-      : 'imagen-3.0-generate-001';
+      ? 'imagen-4.0-generate-001'
+      : 'imagen-4.0-fast-generate-001';
 
     log('NANO-BANANA', `Using model: ${modelName}`);
     log('NANO-BANANA', `Prompt length: ${prompt.length} chars`);
